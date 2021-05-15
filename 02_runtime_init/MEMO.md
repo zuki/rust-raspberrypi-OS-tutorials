@@ -14,6 +14,44 @@
 	b.ne	1f		              // core0以外は1へジャンプ
 ```
 
+# ディレクトリ構造
+
+```
+$ tree .
+.
+├── _arch
+│   └── aarch64
+│       ├── cpu
+│       │   ├── boot.rs
+│       │   └── boot.s
+│       └── cpu.rs
+├── bsp
+│   ├── raspberrypi
+│   │   ├── cpu.rs
+│   │   ├── link.ld
+│   │   └── memory.rs
+│   └── raspberrypi.rs
+├── bsp.rs
+├── cpu
+│   └── boot.rs
+├── cpu.rs
+├── main.rs
+├── memory.rs
+├── panic_wait.rs
+└── runtime_init.rs
+```
+
+# コールチェイン
+
+```
+_start() : _arch/aarch64/cpu/boot.s
+  _start_rust() : _arch/aarch64/cpu/boot.rs
+    runtime_init::runtime_init()  : runtime_init.rs
+      crate::kernel_init() : main.rs
+        panic() : panic_walk.rs
+          cpu::wait_forever() : _arch/aarch64/cpu.rs
+```
+
 # 実行
 
 ```bash
