@@ -14,7 +14,7 @@
      1. core != core0であればコアを停止します。
      2. `stack pointer`を設定します。
      3. `arch/__arch_name__/cpu/boot.rs`で定義されている`_start_rust()`関数にジャンプします。
-- ``runtime_init.rs`のruntime_init()`:
+- `runtime_init.rs`の`runtime_init()`:
      - `.bss`セクションをゼロクリアします。
      - `kernel_init()`を呼び出します。これは`panic!()`を呼び出し、最終的にcore0も停止します。
 - このライブラリは現在、[cortex-a]クレイトを使用しています。このクレイトはゼロコスト抽象化を提供し、CPUのリソースを処理する際の`unsafe`な部分をラップします。
