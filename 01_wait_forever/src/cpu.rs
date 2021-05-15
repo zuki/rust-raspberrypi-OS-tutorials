@@ -2,6 +2,6 @@
 //
 // Copyright (c) 2020-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! Processor code.
+//! プロセッサコード
 
 mod boot;

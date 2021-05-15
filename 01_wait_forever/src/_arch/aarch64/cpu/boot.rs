@@ -2,14 +2,14 @@
 //
 // Copyright (c) 2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! Architectural boot code.
+//! アーキテクチャ固有のブートコード。
 //!
-//! # Orientation
+//! # オリエンテーション
 //!
-//! Since arch modules are imported into generic modules using the path attribute, the path of this
-//! file is:
+//! archモジュールはpath属性を使って汎用モジュールにインポートされるので
+//! このファイルのパスは次の通り:
 //!
 //! crate::cpu::boot::arch_boot
 
-// Assembly counterpart to this file.
+// このファイルに対応するアセンブリファイル。
 global_asm!(include_str!("boot.s"));

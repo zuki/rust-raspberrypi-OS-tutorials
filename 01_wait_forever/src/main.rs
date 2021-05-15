@@ -98,10 +98,10 @@
 //! - `crate::memory::*`
 //! - `crate::bsp::memory::*`
 //!
-//! # Boot flow
+//! # ブートフロー
 //!
-//! 1. The kernel's entry point is the function `cpu::boot::arch_boot::_start()`.
-//!     - It is implemented in `src/_arch/__arch_name__/cpu/boot.s`.
+//! 1. カーネルのエントリポイントは関数 `cpu::boot::arch_boot::_start()`
+//!     - 実装は `src/_arch/__arch_name__/cpu/boot.s` にある
 
 #![feature(asm)]
 #![feature(global_asm)]
@@ -112,4 +112,4 @@ mod bsp;
 mod cpu;
 mod panic_wait;
 
-// Kernel code coming next tutorial.
+// カーネルコードは次のチュートリアルで登場

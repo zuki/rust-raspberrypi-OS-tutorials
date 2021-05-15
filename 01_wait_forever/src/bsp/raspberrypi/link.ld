@@ -3,7 +3,7 @@
  * Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
  */
 
-/* The address at which the the kernel binary will be loaded by the Raspberry's firmware */
+/* Raspberryのファームウェアによりカーネルがロードされるアドレス */
 __rpi_load_addr = 0x80000;
 
 ENTRY(__rpi_load_addr)
