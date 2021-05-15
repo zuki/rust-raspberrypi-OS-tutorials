@@ -3,7 +3,7 @@
  * Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
  */
 
-/* The address at which the the kernel binary will be loaded by the Raspberry's firmware */
+/* Raspberryのファームウェアによりカーネルがロードされるアドレス */
 __rpi_load_addr = 0x80000;
 
 ENTRY(__rpi_load_addr)
@@ -29,9 +29,9 @@ SECTIONS
     .text :
     {
         KEEP(*(.text._start))
-        *(.text._start_arguments) /* Constants (or statics in Rust speak) read by _start(). */
-        *(.text._start_rust)      /* The Rust entry point */
-        *(.text*)                 /* Everything else */
+        *(.text._start_arguments) /* _start()により読み込まれる定数（Rustで言うsttics） */
+        *(.text._start_rust)      /* Rustのエントリポイント */
+        *(.text*)                 /* その他のすべて */
     } :segment_rx
 
     .rodata : ALIGN(8) { *(.rodata*) } :segment_rx
@@ -42,14 +42,14 @@ SECTIONS
     ***********************************************************************************************/
     .data : { *(.data*) } :segment_rw
 
-    /* Section is zeroed in u64 chunks, align start and end to 8 bytes */
+    /* セクションはu64のチャンクでゼロ詰めされる。start/endアドレスは8バイトアライン */
     .bss : ALIGN(8)
     {
         __bss_start = .;
         *(.bss*);
         . = ALIGN(8);
 
-        . += 8; /* Fill for the bss == 0 case, so that __bss_start <= __bss_end_inclusive holds */
+        . += 8; /* bss == 0の場合にも __bss_start <= __bss_end_inclusive になるように詰める */
         __bss_end_inclusive = . - 8;
     } :NONE
 }

@@ -2,13 +2,13 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! BSP Processor code.
+//! BSPプロセッサコード
 
 //--------------------------------------------------------------------------------------------------
-// Public Definitions
+// パブリック定義
 //--------------------------------------------------------------------------------------------------
 
-/// Used by `arch` code to find the early boot core.
+/// 初期ブートコアを探すために`arch`コードにより使用される
 #[no_mangle]
 #[link_section = ".text._start_arguments"]
 pub static BOOT_CORE_ID: u64 = 0;

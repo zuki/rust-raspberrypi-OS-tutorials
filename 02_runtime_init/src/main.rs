@@ -98,11 +98,11 @@
 //! - `crate::memory::*`
 //! - `crate::bsp::memory::*`
 //!
-//! # Boot flow
+//! # ブートフロー
 //!
-//! 1. The kernel's entry point is the function `cpu::boot::arch_boot::_start()`.
-//!     - It is implemented in `src/_arch/__arch_name__/cpu/boot.s`.
-//! 2. Once finished with architectural setup, the arch code calls [`runtime_init::runtime_init()`].
+//! 1. カーネルのエントリポイントは関数 `cpu::boot::arch_boot::_start()`
+//!     - 実装は `src/_arch/__arch_name__/cpu/boot.s` にある
+//! 2. アーキテクチャのセットアップが終わったら、アーキテクチャのコードは[`runtime_init::runtime_init()`]を呼び出す
 //!
 //! [`runtime_init::runtime_init()`]: runtime_init/fn.runtime_init.html
 
@@ -116,11 +116,11 @@ mod memory;
 mod panic_wait;
 mod runtime_init;
 
-/// Early init code.
+/// 最初の初期化コード
 ///
-/// # Safety
+/// # 安全性
 ///
-/// - Only a single core must be active and running this function.
+/// - アクティブなコアはこの関数を実行しているコアだけでなければならない
 unsafe fn kernel_init() -> ! {
     panic!()
 }

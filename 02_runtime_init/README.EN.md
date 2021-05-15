@@ -1,29 +1,31 @@
-# チュートリアル 02 - Runtime Init
+# Tutorial 02 - Runtime Init
 
 ## tl;dr
 
-- `boot.s`を拡張して初めてのRustコードを呼び出します。そこでは、[bss]セクションをゼロクリアしてから`panic()`を呼び出して実行を停止します。
-- `make qemu`を再度実行して、追加コードの実行を確認してください。
+- We extend `boot.s` to call into Rust code for the first time. There, we zero the [bss] section
+  before execution is halted with a call to `panic()`.
+- Check out `make qemu` again to see the additional code run.
 
-## 特筆すべき追加事項
+## Notable additions
 
-- リンカスクリプトへの追加:
-     - 新しいセクション: `.rodata`, `.got`, `.data`, `.bss`.
-     - `_start()`で読み込む必要のあるブートタイム引数をリンクするための場所
-- `_arch/__arch_name__/cpu/boot.s`の`_start()`:
-     1. core != core0であればコアを停止します。
-     2. `stack pointer`を設定します。
-     3. `arch/__arch_name__/cpu/boot.rs`で定義されている`_start_rust()`関数にジャンプします。
-- ``runtime_init.rs`のruntime_init()`:
-     - `.bss`セクションをゼロクリアします。
-     - `kernel_init()`を呼び出します。これは`panic!()`を呼び出し、最終的にcore0も停止します。
-- このライブラリは現在、[cortex-a]クレイトを使用しています。このクレイトはゼロコスト抽象化を提供し、CPUのリソースを処理する際の`unsafe`な部分をラップします。
-    - 動作は `_arch/__arch_name__/cpu.rs` を参照してください。
+- More additions to the linker script:
+     - New sections: `.rodata`, `.got`, `.data`, `.bss`.
+     - A dedicated place for linking boot-time arguments that need to be read by `_start()`.
+- `_start()` in `_arch/__arch_name__/cpu/boot.s`:
+     1. Halt core if core != core0.
+     1. Set up the `stack pointer`.
+     1. Jump to the `_start_rust()` function, defined in `arch/__arch_name__/cpu/boot.rs`.
+- `runtime_init()` in `runtime_init.rs`:
+     - Zeros the `.bss` section.
+     - Calls `kernel_init()`, which calls `panic!()`, which eventually halts core0 as well.
+- The library now uses the [cortex-a] crate, which provides zero-overhead abstractions and wraps
+  `unsafe` parts when dealing with the CPU's resources.
+    - See it in action in `_arch/__arch_name__/cpu.rs`.
 
 [bss]: https://en.wikipedia.org/wiki/.bss
 [cortex-a]: https://github.com/rust-embedded/cortex-a
 
-## 前チュートリアルとのdiff
+## Diff to previous
 ```diff
 
 diff -uNr 01_wait_forever/Cargo.toml 02_runtime_init/Cargo.toml
@@ -68,20 +70,20 @@ diff -uNr 01_wait_forever/src/_arch/aarch64/cpu/boot.rs 02_runtime_init/src/_arc
 
 +use crate::runtime_init;
 +
- // このファイルに対応するアセンブリファイル。
+ // Assembly counterpart to this file.
  global_asm!(include_str!("boot.s"));
 +
 +//--------------------------------------------------------------------------------------------------
-+// パブリックコード
++// Public Code
 +//--------------------------------------------------------------------------------------------------
 +
-+/// `kernel`バイナリのRust側エントリ。
++/// The Rust entry of the `kernel` binary.
 +///
-+/// この関数はアセンブリファイルの`_start`関数から呼び出される。
++/// The function is called from the assembly `_start` function.
 +///
-+/// # 安全性
++/// # Safety
 +///
-+/// - `bss`セクションはまだ初期化されていない。コードはbssをいかなる方法であれ、使用または参照してはならない。
++/// - The `bss` section is not initialized yet. The code must not use or reference it in any way.
 +#[no_mangle]
 +pub unsafe fn _start_rust() -> ! {
 +    runtime_init::runtime_init()
@@ -94,50 +96,50 @@ diff -uNr 01_wait_forever/src/_arch/aarch64/cpu/boot.s 02_runtime_init/src/_arch
  // Copyright (c) 2021 Andre Richter <andre.o.richter@gmail.com>
 
  //--------------------------------------------------------------------------------------------------
-+// 定義
++// Definitions
 +//--------------------------------------------------------------------------------------------------
 +
-+// シンボルのアドレスをレジスタにロードする（PC-相対）。
++// Load the address of a symbol into a register, PC-relative.
 +//
-+// シンボルはプログラムカウンタの +/- 4GiB以内になければならない。
++// The symbol must lie within +/- 4 GiB of the Program Counter.
 +//
-+// # リソース
++// # Resources
 +//
 +// - https://sourceware.org/binutils/docs-2.36/as/AArch64_002dRelocations.html
 +.macro ADR_REL register, symbol
-+       adrp    \register, \symbol
-+       add     \register, \register, #:lo12:\symbol
++	adrp	\register, \symbol
++	add	\register, \register, #:lo12:\symbol
 +.endm
 +
 +.equ _core_id_mask, 0b11
 +
 +//--------------------------------------------------------------------------------------------------
- // パブリックコード
+ // Public Code
  //--------------------------------------------------------------------------------------------------
  .section .text._start
 @@ -11,6 +29,22 @@
  // fn _start()
  //------------------------------------------------------------------------------
  _start:
-+       // ブートコア上でのみ実行する。他のコアは止める。
-+       mrs     x1, MPIDR_EL1         // MARの[7:0]がコア番号（raspi3/4はcoreを4つ搭載: 0x00-0x03）
-+       and     x1, x1, _core_id_mask // _code_id_mask = 0b11; このファイルの先頭で定義
-+       ldr     x2, BOOT_CORE_ID      // BOOT_CORE_ID=0: bsp/__board_name__/cpu.rs で定義
-+       cmp     x1, x2
-+       b.ne    1f                    // core0以外は1へジャンプ
++	// Only proceed on the boot core. Park it otherwise.
++	mrs	x1, MPIDR_EL1
++	and	x1, x1, _core_id_mask
++	ldr	x2, BOOT_CORE_ID      // provided by bsp/__board_name__/cpu.rs
++	cmp	x1, x2
++	b.ne	1f
 +
-+       // 処理がここに来たらそれはブートコア。Rustコードにジャンプするための準備をする。
++	// If execution reaches here, it is the boot core. Now, prepare the jump to Rust code.
 +
-+       // スタックポインタを設定する。
-+       ADR_REL x0, __boot_core_stack_end_exclusive     // link.ldで定義 = 0x80000 .textの下に伸びる
-+       mov     sp, x0
++	// Set the stack pointer.
++	ADR_REL	x0, __boot_core_stack_end_exclusive
++	mov	sp, x0
 +
-+       // Rustコードにジャンプする。
-+       b       _start_rust
++	// Jump to Rust code.
++	b	_start_rust
 +
-        // イベントを無限に待つ（別名 "park the core"）
- 1:     wfe
-        b       1b
+ 	// Infinitely wait for events (aka "park the core").
+ 1:	wfe
+ 	b	1b
 
 diff -uNr 01_wait_forever/src/_arch/aarch64/cpu.rs 02_runtime_init/src/_arch/aarch64/cpu.rs
 --- 01_wait_forever/src/_arch/aarch64/cpu.rs
@@ -147,29 +149,28 @@ diff -uNr 01_wait_forever/src/_arch/aarch64/cpu.rs 02_runtime_init/src/_arch/aar
 +//
 +// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! アーキテクチャ固有のブートコード。
++//! Architectural processor code.
 +//!
-+//! # オリエンテーション
++//! # Orientation
 +//!
-+//! archモジュールはpath属性を使って汎用モジュールにインポートされるので
-+//! このファイルのパスは次の通り:
++//! Since arch modules are imported into generic modules using the path attribute, the path of this
++//! file is:
 +//!
 +//! crate::cpu::arch_cpu
 +
 +use cortex_a::asm;
 +
 +//--------------------------------------------------------------------------------------------------
-+// パブリックコード
++// Public Code
 +//--------------------------------------------------------------------------------------------------
 +
-+/// コア上での実行を休止する
++/// Pause execution on the core.
 +#[inline(always)]
 +pub fn wait_forever() -> ! {
 +    loop {
 +        asm::wfe()
 +    }
 +}
-
 
 diff -uNr 01_wait_forever/src/bsp/raspberrypi/cpu.rs 02_runtime_init/src/bsp/raspberrypi/cpu.rs
 --- 01_wait_forever/src/bsp/raspberrypi/cpu.rs
@@ -179,13 +180,13 @@ diff -uNr 01_wait_forever/src/bsp/raspberrypi/cpu.rs 02_runtime_init/src/bsp/ras
 +//
 +// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! BSPプロセッサコード
++//! BSP Processor code.
 +
 +//--------------------------------------------------------------------------------------------------
-+// パブリック定義
++// Public Definitions
 +//--------------------------------------------------------------------------------------------------
 +
-+/// 初期ブートコアを探すために`arch`コードにより使用される
++/// Used by `arch` code to find the early boot core.
 +#[no_mangle]
 +#[link_section = ".text._start_arguments"]
 +pub static BOOT_CORE_ID: u64 = 0;
@@ -216,9 +217,9 @@ diff -uNr 01_wait_forever/src/bsp/raspberrypi/link.ld 02_runtime_init/src/bsp/ra
      .text :
      {
          KEEP(*(.text._start))
-+        *(.text._start_arguments) /* _start()により読み込まれる定数（Rustで言うsttics） */
-+        *(.text._start_rust)      /* Rustのエントリポイント */
-+        *(.text*)                 /* その他のすべて */
++        *(.text._start_arguments) /* Constants (or statics in Rust speak) read by _start(). */
++        *(.text._start_rust)      /* The Rust entry point */
++        *(.text*)                 /* Everything else */
      } :segment_rx
 +
 +    .rodata : ALIGN(8) { *(.rodata*) } :segment_rx
@@ -229,14 +230,14 @@ diff -uNr 01_wait_forever/src/bsp/raspberrypi/link.ld 02_runtime_init/src/bsp/ra
 +    ***********************************************************************************************/
 +    .data : { *(.data*) } :segment_rw
 +
-+    /* セクションはu64のチャンクでゼロ詰めされる。start/endアドレスは8バイトアライン */
++    /* Section is zeroed in u64 chunks, align start and end to 8 bytes */
 +    .bss : ALIGN(8)
 +    {
 +        __bss_start = .;
 +        *(.bss*);
 +        . = ALIGN(8);
 +
-+        . += 8; /* bss == 0の場合にも __bss_start <= __bss_end_inclusive になるように詰める */
++        . += 8; /* Fill for the bss == 0 case, so that __bss_start <= __bss_end_inclusive holds */
 +        __bss_end_inclusive = . - 8;
 +    } :NONE
  }
@@ -249,30 +250,30 @@ diff -uNr 01_wait_forever/src/bsp/raspberrypi/memory.rs 02_runtime_init/src/bsp/
 +//
 +// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! BSPメモリ管理
++//! BSP Memory Management.
 +
 +use core::{cell::UnsafeCell, ops::RangeInclusive};
 +
 +//--------------------------------------------------------------------------------------------------
-+// プライベート定義
++// Private Definitions
 +//--------------------------------------------------------------------------------------------------
 +
-+// リンカスクリプトで定義されているシンボル
++// Symbols from the linker script.
 +extern "Rust" {
 +    static __bss_start: UnsafeCell<u64>;
 +    static __bss_end_inclusive: UnsafeCell<u64>;
 +}
 +
 +//--------------------------------------------------------------------------------------------------
-+// パブリックコード
++// Public Code
 +//--------------------------------------------------------------------------------------------------
 +
-+/// .bssセクションに含まれる範囲を返す
++/// Return the inclusive range spanning the .bss section.
 +///
-+/// # 安全性
++/// # Safety
 +///
-+/// - 値はリンカスクリプトが提供するものであり、そのまま信用する必要がある
-+/// - リンカスクリプトが提供するアドレスはu64にアラインされている必要がある
++/// - Values are provided by the linker script and must be trusted as-is.
++/// - The linker-provided addresses must be u64 aligned.
 +pub fn bss_range_inclusive() -> RangeInclusive<*mut u64> {
 +    let range;
 +    unsafe {
@@ -288,7 +289,7 @@ diff -uNr 01_wait_forever/src/bsp/raspberrypi.rs 02_runtime_init/src/bsp/raspber
 +++ 02_runtime_init/src/bsp/raspberrypi.rs
 @@ -4,4 +4,5 @@
 
- //! Raspberry Pi 3/4用のトップレベルのBSPファイル
+ //! Top-level BSP file for the Raspberry Pi 3 and 4.
 
 -// Coming soon.
 +pub mod cpu;
@@ -299,7 +300,7 @@ diff -uNr 01_wait_forever/src/cpu.rs 02_runtime_init/src/cpu.rs
 +++ 02_runtime_init/src/cpu.rs
 @@ -4,4 +4,13 @@
 
- //! プロセッサコード
+ //! Processor code.
 
 +#[cfg(target_arch = "aarch64")]
 +#[path = "_arch/aarch64/cpu.rs"]
@@ -308,7 +309,7 @@ diff -uNr 01_wait_forever/src/cpu.rs 02_runtime_init/src/cpu.rs
  mod boot;
 +
 +//--------------------------------------------------------------------------------------------------
-+// アーキテクチャのパブリック再エクスポート
++// Architectural Public Reexports
 +//--------------------------------------------------------------------------------------------------
 +pub use arch_cpu::wait_forever;
 
@@ -317,9 +318,9 @@ diff -uNr 01_wait_forever/src/main.rs 02_runtime_init/src/main.rs
 +++ 02_runtime_init/src/main.rs
 @@ -102,14 +102,25 @@
  //!
- //! 1. カーネルのエントリポイントは関数 `cpu::boot::arch_boot::_start()`
- //!     - 実装は `src/_arch/__arch_name__/cpu/boot.s` にある
-+//! 2. アーキテクチャのセットアップが終わったら、アーキテクチャのコードは[`runtime_init::runtime_init()`]を呼び出す
+ //! 1. The kernel's entry point is the function `cpu::boot::arch_boot::_start()`.
+ //!     - It is implemented in `src/_arch/__arch_name__/cpu/boot.s`.
++//! 2. Once finished with architectural setup, the arch code calls [`runtime_init::runtime_init()`].
 +//!
 +//! [`runtime_init::runtime_init()`]: runtime_init/fn.runtime_init.html
 
@@ -334,12 +335,12 @@ diff -uNr 01_wait_forever/src/main.rs 02_runtime_init/src/main.rs
  mod panic_wait;
 +mod runtime_init;
 
--// カーネルコードは次のチュートリアルで登場
-+/// 最初の初期化コード
+-// Kernel code coming next tutorial.
++/// Early init code.
 +///
-+/// # 安全性
++/// # Safety
 +///
-+/// - アクティブなコアはこの関数を実行しているコアだけでなければならない
++/// - Only a single core must be active and running this function.
 +unsafe fn kernel_init() -> ! {
 +    panic!()
 +}
@@ -352,20 +353,20 @@ diff -uNr 01_wait_forever/src/memory.rs 02_runtime_init/src/memory.rs
 +//
 +// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! メモリ管理
++//! Memory Management.
 +
 +use core::ops::RangeInclusive;
 +
 +//--------------------------------------------------------------------------------------------------
-+// パブリックコード
++// Public Code
 +//--------------------------------------------------------------------------------------------------
 +
-+/// メモリ範囲をゼロ詰めする
++/// Zero out an inclusive memory range.
 +///
-+/// # 安全性
++/// # Safety
 +///
-+/// - `range.start` と `range.end` はvalidでなければならない
-+/// - `range.start` と `range.end` は`T`アラインされていなければならない
++/// - `range.start` and `range.end` must be valid.
++/// - `range.start` and `range.end` must be `T` aligned.
 +pub unsafe fn zero_volatile<T>(range: RangeInclusive<*mut T>)
 +where
 +    T: From<u8>,
@@ -384,7 +385,7 @@ diff -uNr 01_wait_forever/src/panic_wait.rs 02_runtime_init/src/panic_wait.rs
 +++ 02_runtime_init/src/panic_wait.rs
 @@ -4,9 +4,10 @@
 
- //! 永久に待ち続けるパニックハンドラ
+ //! A panic handler that infinitely waits.
 
 +use crate::cpu;
  use core::panic::PanicInfo;
@@ -403,34 +404,34 @@ diff -uNr 01_wait_forever/src/runtime_init.rs 02_runtime_init/src/runtime_init.r
 +//
 +// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! Rustランタイム初期化コード
++//! Rust runtime initialization code.
 +
 +use crate::{bsp, memory};
 +
 +//--------------------------------------------------------------------------------------------------
-+// プライベートコード
++// Private Code
 +//--------------------------------------------------------------------------------------------------
 +
-+/// .bssセクションをゼロ詰め
++/// Zero out the .bss section.
 +///
-+/// # 安全性
++/// # Safety
 +///
-+/// - `kernel_init()`の前に呼び出されなければならない
++/// - Must only be called pre `kernel_init()`.
 +#[inline(always)]
 +unsafe fn zero_bss() {
 +    memory::zero_volatile(bsp::memory::bss_range_inclusive());
 +}
 +
 +//--------------------------------------------------------------------------------------------------
-+// 公開コード
++// Public Code
 +//--------------------------------------------------------------------------------------------------
 +
-+/// C/C++における`crt0`や`c0`に相当する。`bss`セクションをクリアして
-+/// カーネル初期化コードにジャンプする。
++/// Equivalent to `crt0` or `c0` code in C/C++ world. Clears the `bss` section, then jumps to kernel
++/// init code.
 +///
-+/// # 安全性
++/// # Safety
 +///
-+/// - 1つのコアだけがアクティブで、この関数を実行しなければならない。
++/// - Only a single core must be active and running this function.
 +pub unsafe fn runtime_init() -> ! {
 +    zero_bss();
 +

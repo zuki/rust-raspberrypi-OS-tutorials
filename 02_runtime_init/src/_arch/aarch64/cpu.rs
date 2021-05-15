@@ -2,22 +2,22 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! Architectural processor code.
+//! アーキテクチャ固有のブートコード。
 //!
-//! # Orientation
+//! # オリエンテーション
 //!
-//! Since arch modules are imported into generic modules using the path attribute, the path of this
-//! file is:
+//! archモジュールはpath属性を使って汎用モジュールにインポートされるので
+//! このファイルのパスは次の通り:
 //!
 //! crate::cpu::arch_cpu
 
 use cortex_a::asm;
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
-/// Pause execution on the core.
+/// コア上での実行を休止する
 #[inline(always)]
 pub fn wait_forever() -> ! {
     loop {
