@@ -62,5 +62,3 @@ Kernel panic: Stopping here.        # panic_wait.rs
 ```bash
 $ make doc
 ```
-
-[ドキュメント v.0.3.0](target/aarch64-unknown-none-softfloat/doc/kernel/index.html)

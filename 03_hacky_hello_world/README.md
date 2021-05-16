@@ -1,4 +1,4 @@
-# Tutorial 03 - Hacky Hello World
+# チュートリアル 03 - ハック版 Hello World
 
 ## tl;dr
 
