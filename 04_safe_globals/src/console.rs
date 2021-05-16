@@ -2,30 +2,30 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! System console.
+//! システムコンソール
 
 //--------------------------------------------------------------------------------------------------
-// Public Definitions
+// パブリック定義
 //--------------------------------------------------------------------------------------------------
 
-/// Console interfaces.
+/// コンソールインタフェース
 pub mod interface {
     use core::fmt;
 
-    /// Console write functions.
+    /// コンソール write関数
     pub trait Write {
-        /// Write a Rust format string.
+        /// Rust形式の文字列をWrite
         fn write_fmt(&self, args: fmt::Arguments) -> fmt::Result;
     }
 
-    /// Console statistics.
+    /// コンソール統計
     pub trait Statistics {
-        /// Return the number of characters written.
+        /// 書き込んだ文字数を返す
         fn chars_written(&self) -> usize {
             0
         }
     }
 
-    /// Trait alias for a full-fledged console.
+    /// 本格的コンソール用のトレイトエイリアス
     pub trait All = Write + Statistics;
 }

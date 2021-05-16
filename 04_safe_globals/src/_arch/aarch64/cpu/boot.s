@@ -3,14 +3,14 @@
 // Copyright (c) 2021 Andre Richter <andre.o.richter@gmail.com>
 
 //--------------------------------------------------------------------------------------------------
-// Definitions
+// 定義
 //--------------------------------------------------------------------------------------------------
 
-// Load the address of a symbol into a register, PC-relative.
+// シンボルのアドレスをレジスタにロードする（PC-相対）。
 //
-// The symbol must lie within +/- 4 GiB of the Program Counter.
+// シンボルはプログラムカウンタの +/- 4GiB以内になければならない。
 //
-// # Resources
+// # リソース
 //
 // - https://sourceware.org/binutils/docs-2.36/as/AArch64_002dRelocations.html
 .macro ADR_REL register, symbol
@@ -21,7 +21,7 @@
 .equ _core_id_mask, 0b11
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 .section .text._start
 
@@ -29,23 +29,23 @@
 // fn _start()
 //------------------------------------------------------------------------------
 _start:
-	// Only proceed on the boot core. Park it otherwise.
-	mrs	x1, MPIDR_EL1
-	and	x1, x1, _core_id_mask
-	ldr	x2, BOOT_CORE_ID      // provided by bsp/__board_name__/cpu.rs
+	// ブートコア上でのみ実行する。他のコアは止める。
+	mrs	x1, MPIDR_EL1	      // MARの[7:0]がコア番号（raspi3/4はcoreを4つ搭載: 0x00-0x03）
+	and	x1, x1, _core_id_mask // _code_id_mask = 0b11; このファイルの先頭で定義
+	ldr	x2, BOOT_CORE_ID      // BOOT_CORE_ID=0: bsp/__board_name__/cpu.rs で定義
 	cmp	x1, x2
-	b.ne	1f
+	b.ne	1f		      // core0以外は1へジャンプ
 
-	// If execution reaches here, it is the boot core. Now, prepare the jump to Rust code.
+	// 処理がここに来たらそれはブートコア。Rustコードにジャンプするための準備をする。
 
-	// Set the stack pointer.
-	ADR_REL	x0, __boot_core_stack_end_exclusive
+	// スタックポインタを設定する。
+	ADR_REL	x0, __boot_core_stack_end_exclusive	// link.ldで定義 = 0x80000 .textの下に伸びる
 	mov	sp, x0
 
-	// Jump to Rust code.
+	// Rustコードにジャンプする。
 	b	_start_rust
 
-	// Infinitely wait for events (aka "park the core").
+	// イベントを無限に待つ（別名 "park the core"）
 1:	wfe
 	b	1b
 

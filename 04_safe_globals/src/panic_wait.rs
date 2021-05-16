@@ -2,7 +2,7 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! A panic handler that infinitely waits.
+//! 永久に待ち続けるパニックハンドラ
 
 use crate::{cpu, println};
 use core::panic::PanicInfo;

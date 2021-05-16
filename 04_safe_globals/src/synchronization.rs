@@ -2,9 +2,9 @@
 //
 // Copyright (c) 2020-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! Synchronization primitives.
+//! 同期プリミティブ
 //!
-//! # Resources
+//! # 参考
 //!
 //!   - <https://doc.rust-lang.org/book/ch16-04-extensible-concurrency-sync-and-send.html>
 //!   - <https://stackoverflow.com/questions/59428096/understanding-the-send-trait>
@@ -13,30 +13,30 @@
 use core::cell::UnsafeCell;
 
 //--------------------------------------------------------------------------------------------------
-// Public Definitions
+// パブリック定義
 //--------------------------------------------------------------------------------------------------
 
-/// Synchronization interfaces.
+/// 同期インタフェース
 pub mod interface {
 
-    /// Any object implementing this trait guarantees exclusive access to the data wrapped within
-    /// the Mutex for the duration of the provided closure.
+    /// このトレイトを実装しているオブジェクトは、与えられたクロージャにおいて
+    /// Mutexでラップされたデータへの排他的アクセスを保証する
     pub trait Mutex {
-        /// The type of the data that is wrapped by this mutex.
+        /// このmutexでラップされるデータの型
         type Data;
 
-        /// Locks the mutex and grants the closure temporary mutable access to the wrapped data.
+        /// mutexをロックし、ラップされたデータへの一時的可変アクセスをクロージャに保証する
         fn lock<R>(&self, f: impl FnOnce(&mut Self::Data) -> R) -> R;
     }
 }
 
-/// A pseudo-lock for teaching purposes.
+/// 教育目的の疑似ロック
 ///
-/// In contrast to a real Mutex implementation, does not protect against concurrent access from
-/// other cores to the contained data. This part is preserved for later lessons.
+/// 実際のMutexの実装とは異なり、保持するデータに対する他のコアからの同時アクセス
+/// からは保護されない。この部分は後のレッスン用に残される。
 ///
-/// The lock will only be used as long as it is safe to do so, i.e. as long as the kernel is
-/// executing single-threaded, aka only running on a single core with interrupts disabled.
+/// ロックは、そうすることが安全な場合に限り、すなわち、カーネルがシングルスレッド、
+/// つまり割り込み無効でシングルコアで実行されている場合に限り、使用される。
 pub struct NullLock<T>
 where
     T: ?Sized,
@@ -45,14 +45,14 @@ where
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
 unsafe impl<T> Send for NullLock<T> where T: ?Sized + Send {}
 unsafe impl<T> Sync for NullLock<T> where T: ?Sized + Send {}
 
 impl<T> NullLock<T> {
-    /// Create an instance.
+    /// インスタンスを作成する
     pub const fn new(data: T) -> Self {
         Self {
             data: UnsafeCell::new(data),
@@ -61,15 +61,15 @@ impl<T> NullLock<T> {
 }
 
 //------------------------------------------------------------------------------
-// OS Interface Code
+// OSインタフェースコード
 //------------------------------------------------------------------------------
 
 impl<T> interface::Mutex for NullLock<T> {
     type Data = T;
 
     fn lock<R>(&self, f: impl FnOnce(&mut Self::Data) -> R) -> R {
-        // In a real lock, there would be code encapsulating this line that ensures that this
-        // mutable reference will ever only be given out once at a time.
+        // 実際のロックでは、この行をカプセル化するコードがあり、
+        // この可変参照が一度に一つしか渡されないことを保証している
         let data = unsafe { &mut *self.data.get() };
 
         f(data)

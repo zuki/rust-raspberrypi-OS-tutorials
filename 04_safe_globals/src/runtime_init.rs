@@ -2,34 +2,34 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! Rust runtime initialization code.
+//! Rustランタイム初期化コード
 
 use crate::{bsp, memory};
 
 //--------------------------------------------------------------------------------------------------
-// Private Code
+// プライベートコード
 //--------------------------------------------------------------------------------------------------
 
-/// Zero out the .bss section.
+/// .bssセクションをゼロ詰め
 ///
-/// # Safety
+/// # 安全性
 ///
-/// - Must only be called pre `kernel_init()`.
+/// - `kernel_init()`の前に呼び出されなければならない
 #[inline(always)]
 unsafe fn zero_bss() {
     memory::zero_volatile(bsp::memory::bss_range_inclusive());
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// 公開コード
 //--------------------------------------------------------------------------------------------------
 
-/// Equivalent to `crt0` or `c0` code in C/C++ world. Clears the `bss` section, then jumps to kernel
-/// init code.
+/// C/C++における`crt0`や`c0`に相当する。`bss`セクションをクリアして
+/// カーネル初期化コードにジャンプする。
 ///
-/// # Safety
+/// # 安全性
 ///
-/// - Only a single core must be active and running this function.
+/// - 1つのコアだけがアクティブで、この関数を実行しなければならない。
 pub unsafe fn runtime_init() -> ! {
     zero_bss();
 

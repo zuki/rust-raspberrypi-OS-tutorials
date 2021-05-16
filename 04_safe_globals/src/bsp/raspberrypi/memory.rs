@@ -2,30 +2,30 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! BSP Memory Management.
+//! BSPメモリ管理
 
 use core::{cell::UnsafeCell, ops::RangeInclusive};
 
 //--------------------------------------------------------------------------------------------------
-// Private Definitions
+// プライベート定義
 //--------------------------------------------------------------------------------------------------
 
-// Symbols from the linker script.
+// リンカスクリプトで定義されているシンボル
 extern "Rust" {
     static __bss_start: UnsafeCell<u64>;
     static __bss_end_inclusive: UnsafeCell<u64>;
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
-/// Return the inclusive range spanning the .bss section.
+/// .bssセクションに含まれる範囲を返す
 ///
-/// # Safety
+/// # 安全性
 ///
-/// - Values are provided by the linker script and must be trusted as-is.
-/// - The linker-provided addresses must be u64 aligned.
+/// - 値はリンカスクリプトが提供するものであり、そのまま信用する必要がある
+/// - リンカスクリプトが提供するアドレスはu64にアラインされている必要がある
 pub fn bss_range_inclusive() -> RangeInclusive<*mut u64> {
     let range;
     unsafe {

@@ -2,39 +2,39 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! BSP console facilities.
+//! BSPコンソール装置
 
 use crate::{console, synchronization, synchronization::NullLock};
 use core::fmt;
 
 //--------------------------------------------------------------------------------------------------
-// Private Definitions
+// プライベート定義
 //--------------------------------------------------------------------------------------------------
 
-/// A mystical, magical device for generating QEMU output out of the void.
+/// QEMUの出力を無から生成する神秘的で魔法のような装置
 ///
-/// The mutex protected part.
+/// mutexで保護される部分.
 struct QEMUOutputInner {
     chars_written: usize,
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Definitions
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
-/// The main struct.
+/// メイン構造体
 pub struct QEMUOutput {
     inner: NullLock<QEMUOutputInner>,
 }
 
 //--------------------------------------------------------------------------------------------------
-// Global instances
+// グローバルインスタンス
 //--------------------------------------------------------------------------------------------------
 
 static QEMU_OUTPUT: QEMUOutput = QEMUOutput::new();
 
 //--------------------------------------------------------------------------------------------------
-// Private Code
+// プライベートコード
 //--------------------------------------------------------------------------------------------------
 
 impl QEMUOutputInner {
@@ -42,7 +42,7 @@ impl QEMUOutputInner {
         QEMUOutputInner { chars_written: 0 }
     }
 
-    /// Send a character.
+    /// 1文字送信
     fn write_char(&mut self, c: char) {
         unsafe {
             core::ptr::write_volatile(0x3F20_1000 as *mut u8, c as u8);
@@ -52,19 +52,19 @@ impl QEMUOutputInner {
     }
 }
 
-/// Implementing `core::fmt::Write` enables usage of the `format_args!` macros, which in turn are
-/// used to implement the `kernel`'s `print!` and `println!` macros. By implementing `write_str()`,
-/// we get `write_fmt()` automatically.
+/// `core::fmt::Write`を実装すると`format_args!`マクロが利用可能になる。これはひいては
+/// `カーネル`の`print!`と`println!`マクロを実装することになる。`write_str()`を実装する
+/// ことにより自動的に`write_fmt()`を手にすることができる。
 ///
-/// The function takes an `&mut self`, so it must be implemented for the inner struct.
+/// この関数は `&mut self` を取るので、内部構造体を実装する必要がある
 ///
-/// See [`src/print.rs`].
+/// [`src/print.rs`]を参照
 ///
 /// [`src/print.rs`]: ../../print/index.html
 impl fmt::Write for QEMUOutputInner {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for c in s.chars() {
-            // Convert newline to carrige return + newline.
+            // 改行を復帰+改行に変換する
             if c == '\n' {
                 self.write_char('\r')
             }
@@ -77,11 +77,11 @@ impl fmt::Write for QEMUOutputInner {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
 impl QEMUOutput {
-    /// Create a new instance.
+    /// 新しいインスタンスを作成する
     pub const fn new() -> QEMUOutput {
         QEMUOutput {
             inner: NullLock::new(QEMUOutputInner::new()),
@@ -89,22 +89,22 @@ impl QEMUOutput {
     }
 }
 
-/// Return a reference to the console.
+/// コンソールへの参照を返す
 pub fn console() -> &'static impl console::interface::All {
     &QEMU_OUTPUT
 }
 
 //------------------------------------------------------------------------------
-// OS Interface Code
+// OSインタフェースコード
 //------------------------------------------------------------------------------
 use synchronization::interface::Mutex;
 
-/// Passthrough of `args` to the `core::fmt::Write` implementation, but guarded by a Mutex to
-/// serialize access.
+/// `core::fmt::Write`の実装に`args`をそのまま渡すが、ミューテックスで
+/// ガードしてアクセスをシリアライズしている
 impl console::interface::Write for QEMUOutput {
     fn write_fmt(&self, args: core::fmt::Arguments) -> fmt::Result {
-        // Fully qualified syntax for the call to `core::fmt::Write::write:fmt()` to increase
-        // readability.
+        // 可読性を高めるために`core::fmt::Write::write:fmt()`の
+        // 呼び出しに完全修飾構文を採用
         self.inner.lock(|inner| fmt::Write::write_fmt(inner, args))
     }
 }

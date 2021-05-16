@@ -10,3 +10,6 @@
 
 ## [チュートリアル03](03_hacky_hello_world/README.md)
    - [作業メモ](03_hacky_hello_world/MEMO.md) / [ドキュメント](03_hacky_hello_world/target/aarch64-unknown-none-softfloat/doc/kernel/index.html)
+
+## [チュートリアル04](04_safe_globals/README.md)
+   - [作業メモ](04_safe_globals/MEMO.md) / [ドキュメント](04_safe_globals/target/aarch64-unknown-none-softfloat/doc/kernel/index.html)

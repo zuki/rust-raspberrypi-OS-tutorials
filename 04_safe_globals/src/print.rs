@@ -2,13 +2,13 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! Printing.
+//! プリント
 
 use crate::{bsp, console};
 use core::fmt;
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
 #[doc(hidden)]
@@ -18,17 +18,17 @@ pub fn _print(args: fmt::Arguments) {
     bsp::console::console().write_fmt(args).unwrap();
 }
 
-/// Prints without a newline.
+/// 改行なしのプリント
 ///
-/// Carbon copy from <https://doc.rust-lang.org/src/std/macros.rs.html>
+/// <https://doc.rust-lang.org/src/std/macros.rs.html>からそのままコピー
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ($crate::print::_print(format_args!($($arg)*)));
 }
 
-/// Prints with a newline.
+/// 改行付きのプリント
 ///
-/// Carbon copy from <https://doc.rust-lang.org/src/std/macros.rs.html>
+/// <https://doc.rust-lang.org/src/std/macros.rs.html>からそのままコピー
 #[macro_export]
 macro_rules! println {
     () => ($crate::print!("\n"));

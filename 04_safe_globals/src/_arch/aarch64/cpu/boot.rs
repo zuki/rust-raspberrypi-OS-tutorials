@@ -2,31 +2,31 @@
 //
 // Copyright (c) 2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! Architectural boot code.
+//! アーキテクチャ固有のブートコード。
 //!
-//! # Orientation
+//! # オリエンテーション
 //!
-//! Since arch modules are imported into generic modules using the path attribute, the path of this
-//! file is:
+//! archモジュールはpath属性を使って汎用モジュールにインポートされるので
+//! このファイルのパスは次の通り:
 //!
 //! crate::cpu::boot::arch_boot
 
 use crate::runtime_init;
 
-// Assembly counterpart to this file.
+// このファイルに対応するアセンブリファイル。
 global_asm!(include_str!("boot.s"));
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
-/// The Rust entry of the `kernel` binary.
+/// `kernel`バイナリのRust側エントリ。
 ///
-/// The function is called from the assembly `_start` function.
+/// この関数はアセンブリファイルの`_start`関数から呼び出される。
 ///
-/// # Safety
+/// # 安全性
 ///
-/// - The `bss` section is not initialized yet. The code must not use or reference it in any way.
+/// - `bss`セクションはまだ初期化されていない。コードはbssをいかなる方法であれ、使用または参照してはならない。
 #[no_mangle]
 pub unsafe fn _start_rust() -> ! {
     runtime_init::runtime_init()
