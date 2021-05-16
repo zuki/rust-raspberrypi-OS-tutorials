@@ -5,27 +5,27 @@
 // Rust embedded logo for `make doc`.
 #![doc(html_logo_url = "https://git.io/JeGIp")]
 
-//! The `kernel` binary.
+//! `カーネル`バイナリ。
 //!
-//! # Code organization and architecture
+//! # コードの構成とアーキテクチャ
 //!
-//! The code is divided into different *modules*, each representing a typical **subsystem** of the
-//! `kernel`. Top-level module files of subsystems reside directly in the `src` folder. For example,
-//! `src/memory.rs` contains code that is concerned with all things memory management.
+//! コードは複数のモジュールに分割されており、それぞれが`カーネル`の代表的な**サブシステム**を
+//! 表しています。サブシステムのトップレベルのモジュールファイルは `src` フォルダ直下に格納
+//! されています。たとえば、`src/memory.rs`には、メモリ管理全般に関するコードが含まれています。
 //!
-//! ## Visibility of processor architecture code
+//! ## プロセッサアーキテクチャコードの可視化
 //!
-//! Some of the `kernel`'s subsystems depend on low-level code that is specific to the target
-//! processor architecture. For each supported processor architecture, there exists a subfolder in
-//! `src/_arch`, for example, `src/_arch/aarch64`.
+//! カーネルの`サブシステム`の中には、対象となるプロセッサアーキテクチャ固有の低レベルコードに
+//! 依存するものがあります。それらはサポートされているプロセッサアーキテクチャごとに`src/_arch`
+//! 配下にサブフォルダが存在します（たとえば、`src/_arch/aarch64`）。
 //!
-//! The architecture folders mirror the subsystem modules laid out in `src`. For example,
-//! architectural code that belongs to the `kernel`'s MMU subsystem (`src/memory/mmu.rs`) would go
-//! into `src/_arch/aarch64/memory/mmu.rs`. The latter file is loaded as a module in
-//! `src/memory/mmu.rs` using the `path attribute`. Usually, the chosen module name is the generic
-//! module's name prefixed with `arch_`.
+//! アーキテクチャのフォルダは`src`配下のサブシステムモジュールのレイアウトを踏襲しています。
+//! たとえば、`カーネル`のMMUサブシステム（`src/memory/mmu.rs`）に関するアーキテクチャコードは
+//! `src/_arch/aarch64/memory/mmu.rs`にあります。後者のファイルは、`path属性`を使って
+//! `src/memory/mmu.rs`のモジュールとして読み込まれます。通常、選択されるモジュールの名前は
+//! 汎用モジュールの名前の先頭に`arch_`を付けたものになります。
 //!
-//! For example, this is the top of `src/memory/mmu.rs`:
+//! たとえば、`src/memory/mmu.rs`の冒頭は次のようになっています。
 //!
 //! ```
 //! #[cfg(target_arch = "aarch64")]
@@ -33,76 +33,76 @@
 //! mod arch_mmu;
 //! ```
 //!
-//! Often times, items from the `arch_ module` will be publicly reexported by the parent module.
-//! This way, each architecture specific module can provide its implementation of an item, while the
-//! caller must not be concerned which architecture has been conditionally compiled.
+//! 多くの場合、`arch_ モジュール`のアイテムは親モジュールによりpublicに再エクスポートされます。
+//! このようにして、各アーキテクチャ固有のモジュールはアイテムの実装を提供することができ、
+//! 呼び出し側はどのアーキテクチャが条件付きでコンパイルされているかを気にする必要がありません。
 //!
-//! ## BSP code
+//! ## BSPコード
 //!
-//! `BSP` stands for Board Support Package. `BSP` code is organized under `src/bsp.rs` and contains
-//! target board specific definitions and functions. These are things such as the board's memory map
-//! or instances of drivers for devices that are featured on the respective board.
+//! `BSP`はBoard Support Packageの略です。`BSP`のコードは`src/bsp.rs`としてまとめられており、
+//! ターゲットボード固有の定義や機能が含まれています。これには、ボードのメモリマップや、各ボードに
+//! 搭載されているデバイス用のドライバのインスタンスなどがあります。
 //!
-//! Just like processor architecture code, the `BSP` code's module structure tries to mirror the
-//! `kernel`'s subsystem modules, but there is no reexporting this time. That means whatever is
-//! provided must be called starting from the `bsp` namespace, e.g. `bsp::driver::driver_manager()`.
+//! プロセッサアーキテクチャのコードと同様に、`BSP`のコードモジュール構造は`カーネル`の
+//! サブシステムモジュールを踏襲していますが再エクスポートはしていません。つまり、
+//! `bsp::driver::driver_manager()`のように、提供されているものを呼び出す際にはすべて
+//! `bsp`名前空間を付ける必要があります。
 //!
-//! ## Kernel interfaces
 //!
-//! Both `arch` and `bsp` contain code that is conditionally compiled depending on the actual target
-//! and board for which the kernel is compiled. For example, the `interrupt controller` hardware of
-//! the `Raspberry Pi 3` and the `Raspberry Pi 4` is different, but we want the rest of the `kernel`
-//! code to play nicely with any of the two without much hassle.
+//! ## カーネルインタフェース
 //!
-//! In order to provide a clean abstraction between `arch`, `bsp` and `generic kernel code`,
-//! `interface` traits are provided *whenever possible* and *where it makes sense*. They are defined
-//! in the respective subsystem module and help to enforce the idiom of *program to an interface,
-//! not an implementation*. For example, there will be a common IRQ handling interface which the two
-//! different interrupt controller `drivers` of both Raspberrys will implement, and only export the
-//! interface to the rest of the `kernel`.
+//! `arch`も`bsp`も、実際にカーネルがコンパイルされるターゲットやボードに応じて条件コンパイル
+//! されるコードを含んでいます。たとえば、`Raspberry Pi 3`と`Raspberry Pi 4`では、`割り込み
+//! コントローラ`のハードウェアが異なりますが、`カーネル`コードは、2つのうちのどちらとも
+//! うまく動作するようにしたいものです。
+//!
+//! `arch`と`bsp`そして`汎用カーネルコード`の間でクリーンな抽象化を行うために、*可能な限り*、
+//! *意味のある*ところには`interface`トレイトが提供されています。これらは各サブシステム
+//! モジュールで定義されており、*実装ではなくインタフェースに対してプログラムする*という
+//! イディオムを強制します。たとえば、Raspberryの2つの異なる割り込みコントローラ`ドライバ`が
+//! 実装するべき共通のIRQ処理インタフェースを提供し、カーネルの他の部分にはそのインタフェース
+//! だけをエクスポートしています。
 //!
 //! ```
 //!         +-------------------+
-//!         | Interface (Trait) |
-//!         |                   |
+//!         | インタフェース    |
+//!         |    (トレイト)     |
 //!         +--+-------------+--+
 //!            ^             ^
 //!            |             |
 //!            |             |
 //! +----------+--+       +--+----------+
-//! | kernel code |       |  bsp code   |
-//! |             |       |  arch code  |
+//! | カーネル    |       |  bspコード  |
+//! |   コード    |       |  archコード |
 //! +-------------+       +-------------+
 //! ```
 //!
-//! # Summary
+//! # まとめ
 //!
-//! For a logical `kernel` subsystem, corresponding code can be distributed over several physical
-//! locations. Here is an example for the **memory** subsystem:
+//! 論理的な`カーネル`サブシステムは、対応するコードを複数の物理的な場所に分散配置//! できます。ここでは**メモリ**サブシステムの例を示します。
 //!
-//! - `src/memory.rs` and `src/memory/**/*`
-//!   - Common code that is agnostic of target processor architecture and `BSP` characteristics.
-//!     - Example: A function to zero a chunk of memory.
-//!   - Interfaces for the memory subsystem that are implemented by `arch` or `BSP` code.
-//!     - Example: An `MMU` interface that defines `MMU` function prototypes.
-//! - `src/bsp/__board_name__/memory.rs` and `src/bsp/__board_name__/memory/**/*`
-//!   - `BSP` specific code.
-//!   - Example: The board's memory map (physical addresses of DRAM and MMIO devices).
-//! - `src/_arch/__arch_name__/memory.rs` and `src/_arch/__arch_name__/memory/**/*`
-//!   - Processor architecture specific code.
-//!   - Example: Implementation of the `MMU` interface for the `__arch_name__` processor
-//!     architecture.
+//! - `src/memory.rs` と `src/memory/**/*`
+//!   - 対象となるプロセッサのアーキテクチャや`BSP`の特性に左右されない共通のコー//! ド
+//!     - 例: メモリチャンクをゼロにする関数
+//!   - `arch`や`BSP`のコードで実装されるメモリサブシステムのインタフェース
+//!     - 例: `MMU`関数プロトタイプを定義する`MMU`インタフェース
+//! - `src/bsp/__board_name__/memory.rs` と `src/bsp/__board_name__/memory/**/*`
+//!   - `BSP`特有のコード。
+//!     - 例: ボードのメモリマップ（DRAMやMMIOデバイスの物理アドレス）
+//! - `src/_arch/__arch_name__/memory.rs` と `src/_arch/__arch_name__/memory/**/*`
+//!   - プロセッサアーキテクチャ固有のコード
+//!     - 例: `__arch_name__`プロセッサアーキテクチャ用の`MMU`インタフェースの実装
 //!
-//! From a namespace perspective, **memory** subsystem code lives in:
+//! 名前空間の観点から見ると、**メモリ**サブシステムのコードは以下になります。
 //!
 //! - `crate::memory::*`
 //! - `crate::bsp::memory::*`
 //!
-//! # Boot flow
+//! # ブートフロー
 //!
-//! 1. The kernel's entry point is the function `cpu::boot::arch_boot::_start()`.
-//!     - It is implemented in `src/_arch/__arch_name__/cpu/boot.s`.
-//! 2. Once finished with architectural setup, the arch code calls [`runtime_init::runtime_init()`].
+//! 1. カーネルのエントリポイントは関数 `cpu::boot::arch_boot::_start()`
+//!     - 実装は `src/_arch/__arch_name__/cpu/boot.s` にある
+//! 2. アーキテクチャのセットアップが終わったら、アーキテクチャのコードは[`runtime_init::runtime_init()`]を呼び出す
 //!
 //! [`runtime_init::runtime_init()`]: runtime_init/fn.runtime_init.html
 
@@ -120,11 +120,11 @@ mod panic_wait;
 mod print;
 mod runtime_init;
 
-/// Early init code.
+/// 最初の初期化コード
 ///
-/// # Safety
+/// # 安全性
 ///
-/// - Only a single core must be active and running this function.
+/// - アクティブなコアはこの関数を実行しているコアだけでなければならない
 unsafe fn kernel_init() -> ! {
     println!("[0] Hello from Rust!");
 

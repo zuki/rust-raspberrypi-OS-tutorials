@@ -2,18 +2,17 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! System console.
+//! システムコンソール
 
 //--------------------------------------------------------------------------------------------------
-// Public Definitions
+// パブリック定義
 //--------------------------------------------------------------------------------------------------
 
-/// Console interfaces.
+/// コンソールインタフェース
 pub mod interface {
-    /// Console write functions.
+    /// コンソール write関数
     ///
-    /// `core::fmt::Write` is exactly what we need for now. Re-export it here because
-    /// implementing `console::Write` gives a better hint to the reader about the
-    /// intention.
+    /// `core::fmt::Write` は今まさに必要なもの。console::Write`の実装が
+    /// 読者に意図を伝える良いヒントになるので、ここで再エクスポートする。
     pub use core::fmt::Write;
 }

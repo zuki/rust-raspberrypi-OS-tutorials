@@ -2,20 +2,20 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! Memory Management.
+//! メモリ管理
 
 use core::ops::RangeInclusive;
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
-/// Zero out an inclusive memory range.
+/// メモリ範囲をゼロ詰めする
 ///
-/// # Safety
+/// # 安全性
 ///
-/// - `range.start` and `range.end` must be valid.
-/// - `range.start` and `range.end` must be `T` aligned.
+/// - `range.start` と `range.end` はvalidでなければならない
+/// - `range.start` と `range.end` は`T`アラインされていなければならない
 pub unsafe fn zero_volatile<T>(range: RangeInclusive<*mut T>)
 where
     T: From<u8>,

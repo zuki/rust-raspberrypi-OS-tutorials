@@ -2,27 +2,27 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! BSP console facilities.
+//! BSPコンソール装置
 
 use crate::console;
 use core::fmt;
 
 //--------------------------------------------------------------------------------------------------
-// Private Definitions
+// プライベート定義
 //--------------------------------------------------------------------------------------------------
 
-/// A mystical, magical device for generating QEMU output out of the void.
+/// QEMUの出力を無から生成する神秘的で魔法のような装置
 struct QEMUOutput;
 
 //--------------------------------------------------------------------------------------------------
-// Private Code
+// プライベート定義
 //--------------------------------------------------------------------------------------------------
 
-/// Implementing `core::fmt::Write` enables usage of the `format_args!` macros, which in turn are
-/// used to implement the `kernel`'s `print!` and `println!` macros. By implementing `write_str()`,
-/// we get `write_fmt()` automatically.
+/// `core::fmt::Write`を実装すると`format_args!`マクロが利用可能になる。これはひいては
+/// `カーネル`の`print!`と`println!`マクロを実装することになる。`write_str()`を実装する
+/// ことにより自動的に`write_fmt()`を手にすることができる。
 ///
-/// See [`src/print.rs`].
+/// [`src/print.rs`]を参照
 ///
 /// [`src/print.rs`]: ../../print/index.html
 impl fmt::Write for QEMUOutput {
@@ -38,10 +38,10 @@ impl fmt::Write for QEMUOutput {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
-/// Return a reference to the console.
+/// コンソールへの参照を返す
 pub fn console() -> impl console::interface::Write {
     QEMUOutput {}
 }
