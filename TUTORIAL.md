@@ -13,3 +13,6 @@
 
 ## [チュートリアル04](04_safe_globals/README.md)
    - [作業メモ](04_safe_globals/MEMO.md) / [ドキュメント](04_safe_globals/target/aarch64-unknown-none-softfloat/doc/kernel/index.html)
+
+## [チュートリアル05](05_drivers_gpio_uart/README.md)
+   - [作業メモ](05_drivers_gpio_uart/MEMO.md) / [ドキュメント](05_drivers_gpio_uart/target/aarch64-unknown-none-softfloat/doc/kernel/index.html)

@@ -2,21 +2,21 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! BSP driver support.
+//! BSPドライバサポート
 
 use crate::driver;
 
 //--------------------------------------------------------------------------------------------------
-// Private Definitions
+// プライベート定義
 //--------------------------------------------------------------------------------------------------
 
-/// Device Driver Manager type.
+/// デバイスドライバマネージャ型
 struct BSPDriverManager {
     device_drivers: [&'static (dyn DeviceDriver + Sync); 2],
 }
 
 //--------------------------------------------------------------------------------------------------
-// Global instances
+// グローバルインスンタンス
 //--------------------------------------------------------------------------------------------------
 
 static BSP_DRIVER_MANAGER: BSPDriverManager = BSPDriverManager {
@@ -24,16 +24,16 @@ static BSP_DRIVER_MANAGER: BSPDriverManager = BSPDriverManager {
 };
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
-/// Return a reference to the driver manager.
+/// ドライバマネージャへの参照を返す
 pub fn driver_manager() -> &'static impl driver::interface::DriverManager {
     &BSP_DRIVER_MANAGER
 }
 
 //------------------------------------------------------------------------------
-// OS Interface Code
+// OSインタフェースコード
 //------------------------------------------------------------------------------
 use driver::interface::DeviceDriver;
 
@@ -43,7 +43,7 @@ impl driver::interface::DriverManager for BSPDriverManager {
     }
 
     fn post_device_driver_init(&self) {
-        // Configure PL011Uart's output pins.
+        // PL011Uartの出力ピンを構成する
         super::GPIO.map_pl011_uart();
     }
 }

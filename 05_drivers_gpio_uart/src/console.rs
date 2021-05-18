@@ -2,52 +2,52 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! System console.
+//! システムコンソール
 
 //--------------------------------------------------------------------------------------------------
-// Public Definitions
+// パブリック定義
 //--------------------------------------------------------------------------------------------------
 
-/// Console interfaces.
+/// コンソールインタフェース
 pub mod interface {
     use core::fmt;
 
-    /// Console write functions.
+    /// コンソールwrite関数
     pub trait Write {
-        /// Write a single character.
+        /// 1文字Write
         fn write_char(&self, c: char);
 
-        /// Write a Rust format string.
+        /// Rust形式の文字列をWrite
         fn write_fmt(&self, args: fmt::Arguments) -> fmt::Result;
 
-        /// Block until the last buffered character has been physically put on the TX wire.
+        /// バッファされた最後の文字が物理的にTXワイヤに置かれるまでブロックする
         fn flush(&self);
     }
 
-    /// Console read functions.
+    /// コンソールread関数
     pub trait Read {
-        /// Read a single character.
+        /// 1文字Read
         fn read_char(&self) -> char {
             ' '
         }
 
-        /// Clear RX buffers, if any.
+        /// もしあれば、RXバッファをクリアする
         fn clear_rx(&self);
     }
 
-    /// Console statistics.
+    /// コンソール統計
     pub trait Statistics {
-        /// Return the number of characters written.
+        /// 書き出した文字数を返す
         fn chars_written(&self) -> usize {
             0
         }
 
-        /// Return the number of characters read.
+        /// 読み込んだ文字数を返す
         fn chars_read(&self) -> usize {
             0
         }
     }
 
-    /// Trait alias for a full-fledged console.
+    /// 本格的コンソール用のトレイトエイリアス
     pub trait All = Write + Read + Statistics;
 }

@@ -2,7 +2,7 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! Top-level BSP file for the Raspberry Pi 3 and 4.
+//! Raspberry Pi 3/4用のトップレベルのBSPファイル
 
 pub mod console;
 pub mod cpu;
@@ -10,7 +10,7 @@ pub mod driver;
 pub mod memory;
 
 //--------------------------------------------------------------------------------------------------
-// Global instances
+// グローバルインスタンス
 //--------------------------------------------------------------------------------------------------
 use super::device_driver;
 
@@ -21,10 +21,10 @@ static PL011_UART: device_driver::PL011Uart =
     unsafe { device_driver::PL011Uart::new(memory::map::mmio::PL011_UART_START) };
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
-/// Board identification.
+/// ボード識別
 pub fn board_name() -> &'static str {
     #[cfg(feature = "bsp_rpi3")]
     {

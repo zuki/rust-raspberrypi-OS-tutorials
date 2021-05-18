@@ -2,26 +2,26 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! BSP console facilities.
+//! BSPコンソール装置
 
 use super::memory;
 use crate::{bsp::device_driver, console};
 use core::fmt;
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
-/// In case of a panic, the panic handler uses this function to take a last shot at printing
-/// something before the system is halted.
+/// パニックが発生した場合、パニックハンドラはこの関数を使用してシステムが停止する前に
+/// 何かをプリントするという最後の手段をとる。
 ///
-/// We try to init panic-versions of the GPIO and the UART. The panic versions are not protected
-/// with synchronization primitives, which increases chances that we get to print something, even
-/// when the kernel's default GPIO or UART instances happen to be locked at the time of the panic.
+/// GPIOとUARTのパニックバージョンの初期化を試みる。パニックバージョンは同期プリミティブで
+/// 保護されていないため、パニック発生時にカーネルデフォルトのGPIOやUARTインスタンスが
+/// たまたまロックされていても何かをプリントできる可能性は大きい。
 ///
-/// # Safety
+/// # 安全性
 ///
-/// - Use only for printing during a panic.
+/// - パニック時のプリントにのみ使用する
 pub unsafe fn panic_console_out() -> impl fmt::Write {
     let mut panic_gpio = device_driver::PanicGPIO::new(memory::map::mmio::GPIO_START);
     let mut panic_uart = device_driver::PanicUart::new(memory::map::mmio::PL011_UART_START);
@@ -31,7 +31,7 @@ pub unsafe fn panic_console_out() -> impl fmt::Write {
     panic_uart
 }
 
-/// Return a reference to the console.
+/// コンソールへの参照を返す
 pub fn console() -> &'static impl console::interface::All {
     &super::PL011_UART
 }

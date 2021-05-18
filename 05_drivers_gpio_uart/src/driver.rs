@@ -2,43 +2,43 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! Driver support.
+//! ドライバサポート
 
 //--------------------------------------------------------------------------------------------------
-// Public Definitions
+// パブリック定義
 //--------------------------------------------------------------------------------------------------
 
-/// Driver interfaces.
+/// ドライバインタフェース.
 pub mod interface {
-    /// Device Driver functions.
+    /// デバイスドライバ関数
     pub trait DeviceDriver {
-        /// Return a compatibility string for identifying the driver.
+        /// ドライバを識別するための互換性文字列を返す
         fn compatible(&self) -> &'static str;
 
-        /// Called by the kernel to bring up the device.
+        /// デバイスを起動するためにカーネルから呼び出される
         ///
-        /// # Safety
+        /// # 安全性
         ///
-        /// - During init, drivers might do stuff with system-wide impact.
+        /// - initの間にドライバがシステム全体に影響を与えることをする可能性がある
         unsafe fn init(&self) -> Result<(), &'static str> {
             Ok(())
         }
     }
 
-    /// Device driver management functions.
+    /// デバイスドライバ管理関数
     ///
-    /// The `BSP` is supposed to supply one global instance.
+    /// `BSP`はグローバルインスタンスを一つ提供することが想定されている.
     pub trait DriverManager {
-        /// Return a slice of references to all `BSP`-instantiated drivers.
+        /// `BSP`がインスタンス化したすべてのドライバへの参照のスライスを返す
         ///
-        /// # Safety
+        /// # 安全性
         ///
-        /// - The order of devices is the order in which `DeviceDriver::init()` is called.
+        /// - デバイスの順番はその`DeviceDriver::init()`が呼び出された順番
         fn all_device_drivers(&self) -> &[&'static (dyn DeviceDriver + Sync)];
 
-        /// Initialization code that runs after driver init.
+        /// ドライバのinit後に実行される初期化コード
         ///
-        /// For example, device driver code that depends on other drivers already being online.
+        /// たとえば、すでにオンラインになっている他のドライバに依存するデバイスドライバのコード.
         fn post_device_driver_init(&self);
     }
 }

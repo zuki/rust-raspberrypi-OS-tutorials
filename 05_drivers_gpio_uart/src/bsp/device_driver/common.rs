@@ -2,12 +2,12 @@
 //
 // Copyright (c) 2020-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! Common device driver code.
+//! 共通デバイスドライバコード
 
 use core::{marker::PhantomData, ops};
 
 //--------------------------------------------------------------------------------------------------
-// Public Definitions
+// パブリック定義
 //--------------------------------------------------------------------------------------------------
 
 pub struct MMIODerefWrapper<T> {
@@ -16,11 +16,11 @@ pub struct MMIODerefWrapper<T> {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
 impl<T> MMIODerefWrapper<T> {
-    /// Create an instance.
+    /// インスタンスを作成する
     pub const unsafe fn new(start_addr: usize) -> Self {
         Self {
             start_addr,
