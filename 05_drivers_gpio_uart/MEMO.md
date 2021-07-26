@@ -1,6 +1,6 @@
 # コードリーディング
 
-## トレイとの定義と実装
+## トレイトの定義と実装
 
 - src/driver.rs
     - interface::DeviceDriverトレイトの定義
@@ -105,4 +105,35 @@ Launching QEMU
 [4] Echoing input now
 hello raspi
 qemu-system-aarch64: terminating on signal 2
+```
+
+# raspiでの実行
+
+- シリアル速度は921_600
+- uartの反応が遅い。連続してタイピングすると取りこぼす（
+- minicomでは動かない。`make miniterm`で動かすこと。
+- CPUは極熱
+- リセットボタンがほしい
+
+スイッチ付きコンセントを導入したら電源オン時のゴミが無くなく、uartの反応も早くなった。
+
+```
+$ make miniterm
+
+Miniterm 1.0
+
+/Users/dspace/raspi_os/rust_raspi_os/.vendor/bundle/ruby/2.7.0/gems/serialport-1.3.1/lib/serialport.rb:25: warning: rb_secure will be removed in Ruby 3.0
+[MT] ✅ Serial connected
+[0] mingo version 0.5.0
+[1] Booting on: Raspberry Pi 3
+[2] Drivers loaded:
+      1. BCM GPIO
+      2. BCM PL011 UART
+[3] Chars written: 117
+[4] Echoing input now
+abcdefjl
+akdaflkdf;alskdf;alsdf;alsda;slfa;
+keifleilsdkiel
+
+[MT] Bye 👋
 ```
