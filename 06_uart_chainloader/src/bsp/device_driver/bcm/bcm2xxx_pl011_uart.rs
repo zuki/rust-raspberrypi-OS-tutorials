@@ -2,9 +2,9 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! PL011 UART driver.
+//! PL011 UARTドライバ
 //!
-//! # Resources
+//! # 参考資料
 //!
 //! - <https://github.com/raspberrypi/documentation/files/1888662/BCM2837-ARM-Peripherals.-.Revised.-.V2-1.pdf>
 //! - <https://developer.arm.com/documentation/ddi0183/latest>
@@ -17,70 +17,71 @@ use core::fmt;
 use register::{mmio::*, register_bitfields, register_structs};
 
 //--------------------------------------------------------------------------------------------------
-// Private Definitions
+// プライベート定義
 //--------------------------------------------------------------------------------------------------
 
-// PL011 UART registers.
+// PL011 UARTレジスタ
 //
-// Descriptions taken from "PrimeCell UART (PL011) Technical Reference Manual" r1p5.
+// 記述は"PrimeCell UART (PL011) Technical Reference Manual" r1p5から採った
 register_bitfields! {
     u32,
 
-    /// Flag Register.
+    /// フラグレジスタ
     FR [
-        /// Transmit FIFO empty. The meaning of this bit depends on the state of the FEN bit in the
-        /// Line Control Register, LCR_H.
+        /// 送信FIFOが空。このビットの意味は、ラインコントロールレジスタ
+        /// (LCR_H）のFENビットの状態に依存する。
         ///
-        /// - If the FIFO is disabled, this bit is set when the transmit holding register is empty.
-        /// - If the FIFO is enabled, the TXFE bit is set when the transmit FIFO is empty.
-        /// - This bit does not indicate if there is data in the transmit shift register.
+        /// - FIFOが無効(FEN=0)の場合、送信ホールディングレジスタが空の時にこのビットがセットされる。
+        /// - FIFOが有効(FEN=10な場合、送信FIFOが空の時にこのビットがセットされる。
+        /// - このビットは、送信シフトレジスタにデータがあるか否かは示さない。
         TXFE OFFSET(7) NUMBITS(1) [],
 
-        /// Transmit FIFO full. The meaning of this bit depends on the state of the FEN bit in the
-        /// LCR_H Register.
+        /// 送信FIFOが満杯。このビットの意味は、ラインコントロールレジスタ
+        /// (LCR_H）のFENビットの状態に依存する。
         ///
-        /// - If the FIFO is disabled, this bit is set when the transmit holding register is full.
-        /// - If the FIFO is enabled, the TXFF bit is set when the transmit FIFO is full.
+        /// - FIFOが無効(FEN=0)の場合、送信ホールディングレジスタが満杯の時にこのビットがセットされる。
+        /// - FIFOが有効(FEN=10な場合、送信FIFOが満杯の時にこのビットがセットされる。
         TXFF OFFSET(5) NUMBITS(1) [],
 
-        /// Receive FIFO empty. The meaning of this bit depends on the state of the FEN bit in the
-        /// LCR_H Register.
+        /// 受信FIFOが空。このビットの意味は、ラインコントロールレジスタ
+        /// (LCR_H）のFENビットの状態に依存する。
         ///
-        /// If the FIFO is disabled, this bit is set when the receive holding register is empty. If
-        /// the FIFO is enabled, the RXFE bit is set when the receive FIFO is empty.
-
-        /// Receive FIFO empty. The meaning of this bit depends on the state of the FEN bit in the
-        /// LCR_H Register.
-        ///
-        /// - If the FIFO is disabled, this bit is set when the receive holding register is empty.
-        /// - If the FIFO is enabled, the RXFE bit is set when the receive FIFO is empty.
+        /// - FIFOが無効(FEN=0)の場合、受信ホールディングレジスタが空の時にこのビットがセットされる。
+        /// - FIFOが有効(FEN=10な場合、受信FIFOが空の時にこのビットがセットされる。
         RXFE OFFSET(4) NUMBITS(1) [],
-
-        /// UART busy. If this bit is set to 1, the UART is busy transmitting data. This bit remains
-        /// set until the complete byte, including all the stop bits, has been sent from the shift
-        /// register.
+        /// 受信FIFOが満杯。このビットの意味は、ラインコントロールレジスタ
+        /// (LCR_H）のFENビットの状態に依存する。
         ///
-        /// This bit is set as soon as the transmit FIFO becomes non-empty, regardless of whether
-        /// the UART is enabled or not.
+        /// - FIFOが無効(FEN=0)の場合、受信ホールディングレジスタが満杯の時にこのビットがセットされる。
+        /// - FIFOが有効(FEN=10な場合、受信FIFOが満杯の時にこのビットがセットされる。
+        RXFF OFFSET(6) NUMBITS(1) [],
+
+        /// UARTがビジー。このビットが1にセットされている場合、UARTはデータの
+        /// 送信中でビジーである。バイト送信が完了する（ストップビットを
+        /// すべてのビットがシフトレジスタから送信される）までこのビットは
+        /// セットされ続ける。
+        ///
+        /// 送信FIFOが空でなくなると、UARTが有効か否かにかかわらず、
+        /// 直ちにこのビットはセットされる。
         BUSY OFFSET(3) NUMBITS(1) []
     ],
 
-    /// Integer Baud Rate Divisor.
+    /// 通信速度整数除数レジスタ
     IBRD [
-        /// The integer baud rate divisor.
+        /// 通信速度除数の整数部分
         BAUD_DIVINT OFFSET(0) NUMBITS(16) []
     ],
 
-    /// Fractional Baud Rate Divisor.
+    /// 通信速度小数除数レジスタ
     FBRD [
-        ///  The fractional baud rate divisor.
+        ///  通信速度除数の小数部分
         BAUD_DIVFRAC OFFSET(0) NUMBITS(6) []
     ],
 
-    /// Line Control Register.
+    /// ラインコントロールレジスタ
     LCR_H [
-        /// Word length. These bits indicate the number of data bits transmitted or received in a
-        /// frame.
+        /// ワード長。このビットは送信または受信する1フレームのデータビット数を
+        /// 示す。
         WLEN OFFSET(5) NUMBITS(2) [
             FiveBit = 0b00,
             SixBit = 0b01,
@@ -88,45 +89,47 @@ register_bitfields! {
             EightBit = 0b11
         ],
 
-        /// Enable FIFOs:
+        /// FIFOを有効にする
         ///
-        /// 0 = FIFOs are disabled (character mode) that is, the FIFOs become 1-byte-deep holding
-        /// registers.
+        /// 0 = FIFOは無効（キャラクタモード）。FIFOは1バイトのホールディング
+        /// レジスタになる。
         ///
-        /// 1 = Transmit and receive FIFO buffers are enabled (FIFO mode).
+        /// 1 = 送信/受信FIFOバッファは有効（FIFOモード）。
         FEN  OFFSET(4) NUMBITS(1) [
             FifosDisabled = 0,
             FifosEnabled = 1
         ]
     ],
 
-    /// Control Register.
+    /// コントロールレジスタ
     CR [
-        /// Receive enable. If this bit is set to 1, the receive section of the UART is enabled.
-        /// Data reception occurs for either UART signals or SIR signals depending on the setting of
-        /// the SIREN bit. When the UART is disabled in the middle of reception, it completes the
-        /// current character before stopping.
+        /// 受信は有効。このビットが1にセットされている場合、UARTの受信
+        /// セクションは有効である。SIRENビットの設定に応じて、UART信号
+        /// またはSIR信号のいずれかでデータの受信が行われる。受信の途中で
+        /// UARTが無効になった場合は、現在のキャラクタの受信を完了して
+        /// から停止する。
         RXE OFFSET(9) NUMBITS(1) [
             Disabled = 0,
             Enabled = 1
         ],
 
-        /// Transmit enable. If this bit is set to 1, the transmit section of the UART is enabled.
-        /// Data transmission occurs for either UART signals, or SIR signals depending on the
-        /// setting of the SIREN bit. When the UART is disabled in the middle of transmission, it
-        /// completes the current character before stopping.
+        /// 送信は有効。このビットが1にセットされている場合、UARTの送信
+        /// セクションは有効である。SIRENビットの設定に応じて、UART信号
+        /// またはSIR信号のいずれかでデータの送信が行われる。送信の途中で
+        /// UARTが無効になった場合は、現在のキャラクタの送信を完了して
+        /// から停止する。
         TXE OFFSET(8) NUMBITS(1) [
             Disabled = 0,
             Enabled = 1
         ],
 
-        /// UART enable:
+        /// UARTを有効にする
         ///
-        /// 0 = UART is disabled. If the UART is disabled in the middle of transmission or
-        /// reception, it completes the current character before stopping.
+        /// 0 = UARTは無効。 送信または受信の途中でUARTが無効になった場合は、
+        /// 現在のキャラクタの送信または受信を完了してから停止する。
         ///
-        /// 1 = The UART is enabled. Data transmission and reception occurs for either UART signals
-        /// or SIR signals depending on the setting of the SIREN bit
+        /// 1 = UARTは有効。SIRENビットの設定に応じて、UART信号またはSIR信号の
+        /// いずれかでデータの送信または受信が行われる。
         UARTEN OFFSET(0) NUMBITS(1) [
             /// If the UART is disabled in the middle of transmission or reception, it completes the
             /// current character before stopping.
@@ -135,9 +138,9 @@ register_bitfields! {
         ]
     ],
 
-    /// Interrupt Clear Register.
+    /// 割り込みクリアレジスタ
     ICR [
-        /// Meta field for all pending interrupts.
+        /// すべての保留中割り込みを示すメタフィールド
         ALL OFFSET(0) NUMBITS(11) []
     ]
 }
@@ -159,7 +162,7 @@ register_structs! {
     }
 }
 
-/// Abstraction for the associated MMIO registers.
+/// 対応するMMIOレジスタのための抽象化
 type Registers = MMIODerefWrapper<RegisterBlock>;
 
 #[derive(PartialEq)]
@@ -169,7 +172,7 @@ enum BlockingMode {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Definitions
+// パブリック定義
 //--------------------------------------------------------------------------------------------------
 
 pub struct PL011UartInner {
@@ -178,24 +181,24 @@ pub struct PL011UartInner {
     chars_read: usize,
 }
 
-// Export the inner struct so that BSPs can use it for the panic handler.
+// BSPがpanicハンドラで使用できるように内部構造体をエクスポートする
 pub use PL011UartInner as PanicUart;
 
-/// Representation of the UART.
+/// UARTを表す構造体
 pub struct PL011Uart {
     inner: NullLock<PL011UartInner>,
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
 impl PL011UartInner {
-    /// Create an instance.
+    /// インスタンスを作成する
     ///
-    /// # Safety
+    /// # 安全性
     ///
-    /// - The user must ensure to provide a correct MMIO start address.
+    /// - ユーザは正しいMMIO開始アドレスを提供する必要がある
     pub const unsafe fn new(mmio_start_addr: usize) -> Self {
         Self {
             registers: Registers::new(mmio_start_addr),
@@ -204,110 +207,113 @@ impl PL011UartInner {
         }
     }
 
-    /// Set up baud rate and characteristics.
+    /// 通信速度と特性を設定するSet up baud rate and characteristics.
     ///
-    /// This results in 8N1 and 921_600 baud.
+    /// 8N1で921_600ボーと設定される。
     ///
-    /// The calculation for the BRD is (we set the clock to 48 MHz in config.txt):
+    /// BRDの計算は（config.txtでクロックを48MHzと設定したので）次のようになる。
     /// `(48_000_000 / 16) / 921_600 = 3.2552083`.
     ///
-    /// This means the integer part is `3` and goes into the `IBRD`.
-    /// The fractional part is `0.2552083`.
+    /// これにより、整数部分は`3`になり、`IBRD`に設定し、
+    /// 小数部分は`0.2552083`となる。
     ///
-    /// `FBRD` calculation according to the PL011 Technical Reference Manual:
+    /// `FBRD`はPL011テクニカルリファレンスマニュアルにしたがって計算すると
+    /// 次のようになる。
     /// `INTEGER((0.2552083 * 64) + 0.5) = 16`.
     ///
-    /// Therefore, the generated baud rate divider is: `3 + 16/64 = 3.25`. Which results in a
-    /// genrated baud rate of `48_000_000 / (16 * 3.25) = 923_077`.
+    /// したがって、生成される通信速度除数は`3 + 16/64 = 3.25`である。
+    /// これにより生成される通信速は`48_000_000 / (16 * 3.25) = 923_077`となる。
     ///
-    /// Error = `((923_077 - 921_600) / 921_600) * 100 = 0.16%`.
+    /// エラー = `((923_077 - 921_600) / 921_600) * 100 = 0.16%`である。
     pub fn init(&mut self) {
-        // Execution can arrive here while there are still characters queued in the TX FIFO and
-        // actively being sent out by the UART hardware. If the UART is turned off in this case,
-        // those queued characters would be lost.
+        // TX FIFOにまだ文字がキューイングされており、UARTハードウェアが
+        // アクティブに送信している時に実行がここに到着する可能性がある。
+        // この場合にUARTがオフになると、キューに入っていた文字が失われる。
         //
-        // For example, this can happen during runtime on a call to panic!(), because panic!()
-        // initializes its own UART instance and calls init().
+        // たとえば、実行中にpanic!()が呼び出された時にこのような事態が
+        // 発生する可能性がある。panic!()が自身のUARTインスタンスを初期化して
+        // init()を呼び出すからである。
         //
-        // Hence, flush first to ensure all pending characters are transmitted.
+        // そのため、保留中の文字がすべて送信されるように最初にフラッシュする。
         self.flush();
 
-        // Turn the UART off temporarily.
+        // 一時的にUARTを無効にする
         self.registers.CR.set(0);
 
-        // Clear all pending interrupts.
+        // すべての保留中の割り込みをクリアする
         self.registers.ICR.write(ICR::ALL::CLEAR);
 
-        // From the PL011 Technical Reference Manual:
+        // PL011テクニカルリファレンスマニュアルから:
         //
-        // The LCR_H, IBRD, and FBRD registers form the single 30-bit wide LCR Register that is
-        // updated on a single write strobe generated by a LCR_H write. So, to internally update the
-        // contents of IBRD or FBRD, a LCR_H write must always be performed at the end.
+        // LCR_H、IBRD、FBRDの各レジスタは、LCR_Hの書き込みにより生成される
+        // 1回の書き込みストローブで更新される30ビット幅のLCRレジスタを形成
+        // する。そのため、IBRDやFBRDの内容を内部的に更新するには、常に
+        // LCR_Hの書き込みを最後に行う必要がある。
         //
-        // Set the baud rate, 8N1 and FIFO enabled.
+        // 通信速度と8N1を設定し、FIFOを有効にする。
         self.registers.IBRD.write(IBRD::BAUD_DIVINT.val(3));
         self.registers.FBRD.write(FBRD::BAUD_DIVFRAC.val(16));
         self.registers
             .LCR_H
             .write(LCR_H::WLEN::EightBit + LCR_H::FEN::FifosEnabled);
 
-        // Turn the UART on.
+        // UARTを有効にする。
         self.registers
             .CR
             .write(CR::UARTEN::Enabled + CR::TXE::Enabled + CR::RXE::Enabled);
     }
 
-    /// Send a character.
+    /// 1文字送信する
     fn write_char(&mut self, c: char) {
-        // Spin while TX FIFO full is set, waiting for an empty slot.
+        // スロットが開くのを待って、TX FIFOフルが設定されている間、スピンする。
         while self.registers.FR.matches_all(FR::TXFF::SET) {
             cpu::nop();
         }
 
-        // Write the character to the buffer.
+        // 文字をバッファに書き込む
         self.registers.DR.set(c as u32);
 
         self.chars_written += 1;
     }
 
-    /// Block execution until the last buffered character has been physically put on the TX wire.
+    /// バッファされた最後の文字が物理的にTXワイヤに置かれるまで実行をブロックする
     fn flush(&self) {
-        // Spin until the busy bit is cleared.
+        // ビジービットがクリアされるまでスピンする
         while self.registers.FR.matches_all(FR::BUSY::SET) {
             cpu::nop();
         }
     }
 
-    /// Retrieve a character.
+    /// 1文字受信する
     fn read_char(&mut self, blocking_mode: BlockingMode) -> Option<char> {
-        // If RX FIFO is empty,
+        // RX FIFOが空の場合
         if self.registers.FR.matches_all(FR::RXFE::SET) {
-            // immediately return in non-blocking mode.
+            // ノンブロッキングモードの場合はすぐにリターンする
             if blocking_mode == BlockingMode::NonBlocking {
                 return None;
             }
 
-            // Otherwise, wait until a char was received.
+            // そうでなければ、1文字受信されるまで待つ
             while self.registers.FR.matches_all(FR::RXFE::SET) {
                 cpu::nop();
             }
         }
 
-        // Read one character.
+        // 1文字読み込む
         let ret = self.registers.DR.get() as u8 as char;
 
-        // Update statistics.
+        // 統計を更新する
         self.chars_read += 1;
 
         Some(ret)
     }
 }
 
-/// Implementing `core::fmt::Write` enables usage of the `format_args!` macros, which in turn are
-/// used to implement the `kernel`'s `print!` and `println!` macros. By implementing `write_str()`,
-/// we get `write_fmt()` automatically.
+/// `core::fmt::Write`を実装すると`format_args!`マクロが利用可能になる。これはひいては
+/// `カーネル`の`print!`と`println!`マクロを実装することになる。`write_str()`を実装する
+/// ことにより自動的に`write_fmt()`を手にすることができる。
 ///
-/// The function takes an `&mut self`, so it must be implemented for the inner struct.
+/// この関数は `&mut self` を取るので、内部構造体を実装する必要がある
 ///
 /// See [`src/print.rs`].
 ///
@@ -323,11 +329,11 @@ impl fmt::Write for PL011UartInner {
 }
 
 impl PL011Uart {
-    /// Create an instance.
+    /// インスタンスを作成する
     ///
     /// # Safety
     ///
-    /// - The user must ensure to provide a correct MMIO start address.
+    /// - ユーザは正しいMMIO開始アドレスを提供する必要がある
     pub const unsafe fn new(mmio_start_addr: usize) -> Self {
         Self {
             inner: NullLock::new(PL011UartInner::new(mmio_start_addr)),
@@ -336,7 +342,7 @@ impl PL011Uart {
 }
 
 //------------------------------------------------------------------------------
-// OS Interface Code
+// OSインタフェースコード
 //------------------------------------------------------------------------------
 use synchronization::interface::Mutex;
 
@@ -353,20 +359,20 @@ impl driver::interface::DeviceDriver for PL011Uart {
 }
 
 impl console::interface::Write for PL011Uart {
-    /// Passthrough of `args` to the `core::fmt::Write` implementation, but guarded by a Mutex to
-    /// serialize access.
+    /// `core::fmt::Write`の実装に`args`をそのまま渡すが、ミューテックスで
+    /// ガードしてアクセスをシリアライズしている
     fn write_char(&self, c: char) {
         self.inner.lock(|inner| inner.write_char(c));
     }
 
     fn write_fmt(&self, args: core::fmt::Arguments) -> fmt::Result {
-        // Fully qualified syntax for the call to `core::fmt::Write::write:fmt()` to increase
-        // readability.
+        // 可読性を高めるために`core::fmt::Write::write:fmt()`の
+        // 呼び出しに完全修飾構文を採用
         self.inner.lock(|inner| fmt::Write::write_fmt(inner, args))
     }
 
     fn flush(&self) {
-        // Spin until TX FIFO empty is set.
+        // TX FIFOが空になるまでスピンする
         self.inner.lock(|inner| inner.flush());
     }
 }
@@ -378,7 +384,7 @@ impl console::interface::Read for PL011Uart {
     }
 
     fn clear_rx(&self) {
-        // Read from the RX FIFO until it is indicating empty.
+        // 空になるまでRX FIFOを読み込む
         while self
             .inner
             .lock(|inner| inner.read_char(BlockingMode::NonBlocking))

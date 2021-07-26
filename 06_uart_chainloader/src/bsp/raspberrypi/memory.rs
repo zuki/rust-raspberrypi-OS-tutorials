@@ -2,25 +2,25 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! BSP Memory Management.
+//! BSPメモリ管理
 
 use core::{cell::UnsafeCell, ops::RangeInclusive};
 
 //--------------------------------------------------------------------------------------------------
-// Private Definitions
+// プライベート定義
 //--------------------------------------------------------------------------------------------------
 
-// Symbols from the linker script.
+// リンカスクリプトで定義されているシンボル
 extern "Rust" {
     static __bss_start: UnsafeCell<u64>;
     static __bss_end_inclusive: UnsafeCell<u64>;
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Definitions
+// パブリック定義
 //--------------------------------------------------------------------------------------------------
 
-/// The board's physical memory map.
+/// ボードの物理メモリアドレス
 #[rustfmt::skip]
 pub(super) mod map {
     pub const BOARD_DEFAULT_LOAD_ADDRESS: usize =        0x8_0000;
@@ -28,7 +28,7 @@ pub(super) mod map {
     pub const GPIO_OFFSET:                usize =        0x0020_0000;
     pub const UART_OFFSET:                usize =        0x0020_1000;
 
-    /// Physical devices.
+    /// 物理デバイス
     #[cfg(feature = "bsp_rpi3")]
     pub mod mmio {
         use super::*;
@@ -38,7 +38,7 @@ pub(super) mod map {
         pub const PL011_UART_START: usize = START + UART_OFFSET;
     }
 
-    /// Physical devices.
+    /// 物理デバイス
     #[cfg(feature = "bsp_rpi4")]
     pub mod mmio {
         use super::*;
@@ -50,21 +50,21 @@ pub(super) mod map {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
-/// The address on which the Raspberry firmware loads every binary by default.
+/// Raspberryのファームウェアがデフォルトですべてのバイナリをロードするアドレス
 #[inline(always)]
 pub fn board_default_load_addr() -> *const u64 {
     map::BOARD_DEFAULT_LOAD_ADDRESS as _
 }
 
-/// Return the inclusive range spanning the relocated .bss section.
+/// 再配置されたbssセクションに含まれる範囲を返す
 ///
-/// # Safety
+/// # 安全性
 ///
-/// - Values are provided by the linker script and must be trusted as-is.
-/// - The linker-provided addresses must be u64 aligned.
+/// - 値はリンカスクリプトが提供するものであり、そのまま信用する必要がある
+/// - リンカスクリプトが提供するアドレスはu64にアラインされている必要がある
 pub fn bss_range_inclusive() -> RangeInclusive<*mut u64> {
     let range;
     unsafe {

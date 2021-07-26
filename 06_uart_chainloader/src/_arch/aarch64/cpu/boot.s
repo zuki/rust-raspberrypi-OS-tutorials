@@ -3,14 +3,14 @@
 // Copyright (c) 2021 Andre Richter <andre.o.richter@gmail.com>
 
 //--------------------------------------------------------------------------------------------------
-// Definitions
+// 定義
 //--------------------------------------------------------------------------------------------------
 
-// Load the address of a symbol into a register, PC-relative.
+// シンボルのアドレス（PC-相対アドレス）をレジスタにロードする。
 //
-// The symbol must lie within +/- 4 GiB of the Program Counter.
+// シンボルはプログラムカウンタの +/- 4GiB以内になければならない。
 //
-// # Resources
+// # 参考資料
 //
 // - https://sourceware.org/binutils/docs-2.36/as/AArch64_002dRelocations.html
 .macro ADR_REL register, symbol
@@ -18,7 +18,7 @@
 	add	\register, \register, #:lo12:\symbol
 .endm
 
-// Load the address of a symbol into a register, absolute.
+// シンボルのアドレス（絶対アドレス）をレジスタにロードする
 //
 // # Resources
 //
@@ -32,7 +32,7 @@
 .equ _core_id_mask, 0b11
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 .section .text._start
 
@@ -40,34 +40,34 @@
 // fn _start()
 //------------------------------------------------------------------------------
 _start:
-	// Only proceed on the boot core. Park it otherwise.
-	mrs	x1, MPIDR_EL1
-	and	x1, x1, _core_id_mask
-	ldr	x2, BOOT_CORE_ID      // provided by bsp/__board_name__/cpu.rs
+	// ブートコア上でのみ実行する。他のコアは止める。
+	mrs	x1, MPIDR_EL1	      // MARの[7:0]がコア番号（raspi3/4はcoreを4つ搭載: 0x00-0x03）
+	and	x1, x1, _core_id_mask // _code_id_mask = 0b11; このファイルの先頭で定義
+	ldr	x2, BOOT_CORE_ID      // BOOT_CORE_ID=0: bsp/__board_name__/cpu.rs で定義
 	cmp	x1, x2
-	b.ne	2f
+	b.ne	2f		      // core0以外は2へジャンプ
 
-	// If execution reaches here, it is the boot core.
+	// 処理がここに来たらそれはブートコア。
 
-	// Next, relocate the binary.
-	ADR_REL	x0, __binary_nonzero_start         // The address the binary got loaded to.
-	ADR_ABS	x1, __binary_nonzero_start         // The address the binary was linked to.
+	// 次に、バイナリを再配置する
+	ADR_REL	x0, __binary_nonzero_start         // バイナリのロードアドレス
+	ADR_ABS	x1, __binary_nonzero_start         // バイナリのリンクアドレス
 	ADR_ABS	x2, __binary_nonzero_end_exclusive
 
-1:	ldr	x3, [x0], #8
-	str	x3, [x1], #8
-	cmp	x1, x2
-	b.lo	1b
+1:	ldr	x3, [x0], #8	// x3 <- [x0]; x0+=8
+	str	x3, [x1], #8	// x3 -> [x1]; x1+=8
+	cmp	x1, x2		// x1 - x2
+	b.lo	1b		// goto 1b if x1 < x2
 
-	// Set the stack pointer.
+	// スタックポインタを設定する。
 	ADR_ABS	x0, __boot_core_stack_end_exclusive
 	mov	sp, x0
 
-	// Jump to the relocated Rust code.
+	// 再配置されたRustコードにジャンプする
 	ADR_ABS	x1, _start_rust
 	br	x1
 
-	// Infinitely wait for events (aka "park the core").
+	// イベントを無限に待つ（別名 "park the core"）
 2:	wfe
 	b	2b
 

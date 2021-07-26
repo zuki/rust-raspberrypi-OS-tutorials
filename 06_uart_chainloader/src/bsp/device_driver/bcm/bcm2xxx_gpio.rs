@@ -2,7 +2,7 @@
 //
 // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
-//! GPIO Driver.
+//! GPIOドライバ
 
 use crate::{
     bsp::device_driver::common::MMIODerefWrapper, driver, synchronization,
@@ -11,20 +11,20 @@ use crate::{
 use register::{mmio::*, register_bitfields, register_structs};
 
 //--------------------------------------------------------------------------------------------------
-// Private Definitions
+// プライベート定義
 //--------------------------------------------------------------------------------------------------
 
-// GPIO registers.
+// GPIOレジスタ
 //
-// Descriptions taken from
+// 記述は以下から採った
 // - https://github.com/raspberrypi/documentation/files/1888662/BCM2837-ARM-Peripherals.-.Revised.-.V2-1.pdf
 // - https://datasheets.raspberrypi.org/bcm2711/bcm2711-peripherals.pdf
 register_bitfields! {
     u32,
 
-    /// GPIO Function Select 1
+    /// GPIO機能選択 1
     GPFSEL1 [
-        /// Pin 15
+        /// ピン15
         FSEL15 OFFSET(15) NUMBITS(3) [
             Input = 0b000,
             Output = 0b001,
@@ -32,7 +32,7 @@ register_bitfields! {
 
         ],
 
-        /// Pin 14
+        /// ピン 14
         FSEL14 OFFSET(12) NUMBITS(3) [
             Input = 0b000,
             Output = 0b001,
@@ -40,11 +40,11 @@ register_bitfields! {
         ]
     ],
 
-    /// GPIO Pull-up/down Register
+    /// GPIOプルアップ/プルダウンレジスタ
     ///
-    /// BCM2837 only.
+    /// BCM2837のみ
     GPPUD [
-        /// Controls the actuation of the internal pull-up/down control line to ALL the GPIO pins.
+        /// すべてのGPIOピンの内部プルアップ/プルダウンコントロールラインの動作を制御する
         PUD OFFSET(0) NUMBITS(2) [
             Off = 0b00,
             PullDown = 0b01,
@@ -52,34 +52,34 @@ register_bitfields! {
         ]
     ],
 
-    /// GPIO Pull-up/down Clock Register 0
+    /// GPIOプルアップ/プルダウンクロックレジスタ
     ///
-    /// BCM2837 only.
+    /// BCM2837のみ
     GPPUDCLK0 [
-        /// Pin 15
+        /// ピン 15
         PUDCLK15 OFFSET(15) NUMBITS(1) [
             NoEffect = 0,
             AssertClock = 1
         ],
 
-        /// Pin 14
+        /// ピン 14
         PUDCLK14 OFFSET(14) NUMBITS(1) [
             NoEffect = 0,
             AssertClock = 1
         ]
     ],
 
-    /// GPIO Pull-up / Pull-down Register 0
+    /// GPIOプルアップ/プルダウンレジスタ 0
     ///
-    /// BCM2711 only.
+    /// BCM2711のみ
     GPIO_PUP_PDN_CNTRL_REG0 [
-        /// Pin 15
+        /// ピン 15
         GPIO_PUP_PDN_CNTRL15 OFFSET(30) NUMBITS(2) [
             NoResistor = 0b00,
             PullUp = 0b01
         ],
 
-        /// Pin 14
+        /// ピン 14
         GPIO_PUP_PDN_CNTRL14 OFFSET(28) NUMBITS(2) [
             NoResistor = 0b00,
             PullUp = 0b01
@@ -101,54 +101,53 @@ register_structs! {
     }
 }
 
-/// Abstraction for the associated MMIO registers.
+/// 対応するMMIOレジスタのための抽象化
 type Registers = MMIODerefWrapper<RegisterBlock>;
 
 //--------------------------------------------------------------------------------------------------
-// Public Definitions
+// パブリック定義
 //--------------------------------------------------------------------------------------------------
 
 pub struct GPIOInner {
     registers: Registers,
 }
 
-// Export the inner struct so that BSPs can use it for the panic handler.
+// BSPがpanicハンドラで使用できるように内部構造体をエクスポートする
 pub use GPIOInner as PanicGPIO;
 
-/// Representation of the GPIO HW.
+/// GPIO HWを表す構造体
 pub struct GPIO {
     inner: NullLock<GPIOInner>,
 }
 
 //--------------------------------------------------------------------------------------------------
-// Public Code
+// パブリックコード
 //--------------------------------------------------------------------------------------------------
 
 impl GPIOInner {
-    /// Create an instance.
+    /// インスタンスを作成する
     ///
-    /// # Safety
+    /// # 安全性
     ///
-    /// - The user must ensure to provide a correct MMIO start address.
+    /// - ユーザは正しいMMIO開始アドレスを提供する必要がある
     pub const unsafe fn new(mmio_start_addr: usize) -> Self {
         Self {
             registers: Registers::new(mmio_start_addr),
         }
     }
 
-    /// Disable pull-up/down on pins 14 and 15.
+    /// ピン14と15のプルアップ/プルダウンを無効にする
     #[cfg(feature = "bsp_rpi3")]
     fn disable_pud_14_15_bcm2837(&mut self) {
         use crate::cpu;
 
-        // Make an educated guess for a good delay value (Sequence described in the BCM2837
-        // peripherals PDF).
+        // （BCM2837ペリフェラルのPDFに記載されているシーケンスの）適切な遅延値を
+        // 経験的に推測する。
+        //   - Wikipediaによると、最速のRPi4のクロックは1.5GHz程度
+        //   - Linuxの2837 GPIOドライバは、ステップ間で1μs待つ
         //
-        // - According to Wikipedia, the fastest RPi4 clocks around 1.5 GHz.
-        // - The Linux 2837 GPIO driver waits 1 µs between the steps.
-        //
-        // So lets try to be on the safe side and default to 2000 cycles, which would equal 1 µs
-        // would the CPU be clocked at 2 GHz.
+        // 安全側にふって、デフォルトを2000サイクルとする。CPUのクロックが2GHzの場合、
+        // この値は1μsに相当する。
         const DELAY: usize = 2000;
 
         self.registers.GPPUD.write(GPPUD::PUD::Off);
@@ -163,7 +162,7 @@ impl GPIOInner {
         self.registers.GPPUDCLK0.set(0);
     }
 
-    /// Disable pull-up/down on pins 14 and 15.
+    /// ピン14と15のプルアップ/プルダウンを無効にする
     #[cfg(feature = "bsp_rpi4")]
     fn disable_pud_14_15_bcm2711(&mut self) {
         self.registers.GPIO_PUP_PDN_CNTRL_REG0.write(
@@ -172,17 +171,17 @@ impl GPIOInner {
         );
     }
 
-    /// Map PL011 UART as standard output.
+    /// PL011 UARTを標準アウトプットにマップする
     ///
-    /// TX to pin 14
-    /// RX to pin 15
+    /// TXをピン14に
+    /// RXをピン15に
     pub fn map_pl011_uart(&mut self) {
-        // Select the UART on pins 14 and 15.
+        // ピン14と15のUARTを選択する
         self.registers
             .GPFSEL1
             .modify(GPFSEL1::FSEL15::AltFunc0 + GPFSEL1::FSEL14::AltFunc0);
 
-        // Disable pull-up/down on pins 14 and 15.
+        // ピン14と15のプルアップ/プルダウンを無効にする
         #[cfg(feature = "bsp_rpi3")]
         self.disable_pud_14_15_bcm2837();
 
@@ -192,25 +191,25 @@ impl GPIOInner {
 }
 
 impl GPIO {
-    /// Create an instance.
+    /// インスタンスを作成する
     ///
-    /// # Safety
+    /// # 安全性
     ///
-    /// - The user must ensure to provide a correct MMIO start address.
+    /// - ユーザは正しいMMIO開始アドレスを提供する必要がある
     pub const unsafe fn new(mmio_start_addr: usize) -> Self {
         Self {
             inner: NullLock::new(GPIOInner::new(mmio_start_addr)),
         }
     }
 
-    /// Concurrency safe version of `GPIOInner.map_pl011_uart()`
+    /// `GPIOInner.map_pl011_uart()`の並行処理性安全バージョン
     pub fn map_pl011_uart(&self) {
         self.inner.lock(|inner| inner.map_pl011_uart())
     }
 }
 
 //------------------------------------------------------------------------------
-// OS Interface Code
+// OSインタフェースコード
 //------------------------------------------------------------------------------
 use synchronization::interface::Mutex;
 
