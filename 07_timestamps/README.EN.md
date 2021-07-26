@@ -1,18 +1,16 @@
-# チュートリアル 07 - タイムスタンプ
+# Tutorial 07 - Timestamps
 
 ## tl;dr
 
-- タイマハードウェアの抽象化を追加し、`_arch/aarch64`にARMアーキテクチャ
-  タイマ用に実装しました。
-- 新しいタイマ関数は、UARTプリントにタイムスタンプを付加したり、`GPIO`
-  バイスドライバのサイクルベースの遅延を取り除くために使用され、これに
-  より精度が向上します。
-- `warn!()`マクロが追加されました。
+- We add abstractions for timer hardware, and implement them for the ARM architectural timer in
+  `_arch/aarch64`.
+- The new timer functions are used to annotate UART prints with timestamps, and to get rid of the
+  cycle-based delays in the `GPIO` device driver, which boosts accuracy.
+- A `warn!()` macro is added.
 
-## テストする
+## Test it
 
-（前回のチュートリアルで追加した）chainboot経由でテストします。
-
+Check it out via chainboot (added in previous tutorial):
 ```console
 $ make chainboot
 [...]
@@ -44,8 +42,7 @@ Minipush 1.0
 [    2.144245] Spinning for 1 second
 ```
 
-## 前チュートリアルとのdiff
-
+## Diff to previous
 ```diff
 
 diff -uNr 06_uart_chainloader/Cargo.toml 07_timestamps/Cargo.toml
