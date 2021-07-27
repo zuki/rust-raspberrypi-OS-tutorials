@@ -24,3 +24,6 @@
    - [作業メモ](07_timestamps/MEMO.md) / [ドキュメント](07_timestamps/target/aarch64-unknown-none-softfloat/doc/kernel/index.html)
 
 ## [チュートリアル08: JTAGを使ったハードウェアデバッグ](08_hw_debug_JTAG/README.md)
+
+## [チュートリアル09: 権限レベル](09_privilege_level/README.md)
+   - [作業メモ](09_privilege_level/MEMO.md) / [ドキュメント](09_privilege_level/target/aarch64-unknown-none-softfloat/doc/kernel/index.html)
