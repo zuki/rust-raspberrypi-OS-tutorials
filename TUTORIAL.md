@@ -22,3 +22,5 @@
 
 ## [チュートリアル07: タイムスタンプ](07_timestamps/README.md)
    - [作業メモ](07_timestamps/MEMO.md) / [ドキュメント](07_timestamps/target/aarch64-unknown-none-softfloat/doc/kernel/index.html)
+
+## [チュートリアル08: JTAGを使ったハードウェアデバッグ](08_hw_debug_JTAG/README.md)
