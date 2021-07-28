@@ -1,5 +1,22 @@
 # コードリーディング
 
+## カーネルを読み込む
+
+`main.rs`と`utils/minipush.rb`が通信してkernel8.imgを`kernel_addr=0x80000`に読み込む
+
+| `main.rs` |  方向 | minipush.rb |
+|:----------|:-----:|:------------|
+| 0x3, 0x3, 0x3 | → |             |
+| size      | ←    | カーネルサイズ(uint32_t)   |
+| "OK"      | →    |              |
+| data      | ←    | [0..size]1バイトずつ送信 |
+| [kernel_addr+i] = data | |
+
+```
+let kernel: fn() -> ! = unsafe { core::mem::transmute(kernel_addr) }; // 関数ポインタに変換
+kernel()                                                              // 実行
+```
+
 ## レジスタにアドレスを設定する
 
 ### PC相対アドレス: 2段階設定

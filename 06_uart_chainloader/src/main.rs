@@ -194,7 +194,7 @@ fn kernel_main() -> ! {
     println!("[ML] Loaded! Executing the payload now\n");
     console().flush();
 
-    // 関数ポインタを作成するために頃魔術を使用する
+    // 関数ポインタを作成するために黒魔術を使用する
     let kernel: fn() -> ! = unsafe { core::mem::transmute(kernel_addr) };
 
     // ロードしたカーネルにジャンプする!
