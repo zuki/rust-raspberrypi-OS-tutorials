@@ -1,0 +1,9 @@
+[book]
+authors = ["Rust embedded"]
+multilingual = false
+src = "src"
+title = "Operating System development tutorials in Rust on the Raspberry Piの各種文書の翻訳"
+
+[output.html]
+default-theme = "rust"
+additional-css = ["theme/custom.css"]
