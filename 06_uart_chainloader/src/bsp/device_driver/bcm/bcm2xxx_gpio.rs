@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 
 //! GPIOドライバ
 
@@ -8,7 +8,11 @@ use crate::{
     bsp::device_driver::common::MMIODerefWrapper, driver, synchronization,
     synchronization::NullLock,
 };
-use register::{mmio::*, register_bitfields, register_structs};
+use tock_registers::{
+    interfaces::{ReadWriteable, Writeable},
+    register_bitfields, register_structs,
+    registers::ReadWrite,
+};
 
 //--------------------------------------------------------------------------------------------------
 // プライベート定義
@@ -104,16 +108,13 @@ register_structs! {
 /// 対応するMMIOレジスタのための抽象化
 type Registers = MMIODerefWrapper<RegisterBlock>;
 
-//--------------------------------------------------------------------------------------------------
-// パブリック定義
-//--------------------------------------------------------------------------------------------------
-
-pub struct GPIOInner {
+struct GPIOInner {
     registers: Registers,
 }
 
-// BSPがpanicハンドラで使用できるように内部構造体をエクスポートする
-pub use GPIOInner as PanicGPIO;
+//--------------------------------------------------------------------------------------------------
+// Public Definitions
+//--------------------------------------------------------------------------------------------------
 
 /// GPIO HWを表す構造体
 pub struct GPIO {
@@ -121,7 +122,7 @@ pub struct GPIO {
 }
 
 //--------------------------------------------------------------------------------------------------
-// パブリックコード
+// Private Code
 //--------------------------------------------------------------------------------------------------
 
 impl GPIOInner {
@@ -190,8 +191,14 @@ impl GPIOInner {
     }
 }
 
+//--------------------------------------------------------------------------------------------------
+// Public Code
+//--------------------------------------------------------------------------------------------------
+
 impl GPIO {
-    /// インスタンスを作成する
+    pub const COMPATIBLE: &'static str = "BCM GPIO";
+
+    /// インスタンスを作成する.
     ///
     /// # 安全性
     ///
@@ -215,6 +222,6 @@ use synchronization::interface::Mutex;
 
 impl driver::interface::DeviceDriver for GPIO {
     fn compatible(&self) -> &'static str {
-        "BCM GPIO"
+        Self::COMPATIBLE
     }
 }

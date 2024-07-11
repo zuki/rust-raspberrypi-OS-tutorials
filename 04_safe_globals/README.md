@@ -66,7 +66,7 @@ diff -uNr 03_hacky_hello_world/Cargo.toml 04_safe_globals/Cargo.toml
 -version = "0.3.0"
 +version = "0.4.0"
  authors = ["Andre Richter <andre.o.richter@gmail.com>"]
- edition = "2018"
+ edition = "2021"
 
 
 diff -uNr 03_hacky_hello_world/src/bsp/raspberrypi/console.rs 04_safe_globals/src/bsp/raspberrypi/console.rs
@@ -167,9 +167,9 @@ diff -uNr 03_hacky_hello_world/src/bsp/raspberrypi/console.rs 04_safe_globals/sr
  /// コンソールへの参照を返す
 -pub fn console() -> impl console::interface::Write {
 -    QEMUOutput {}
-+pub fn console() -> &'static impl console::interface::All {
++pub fn console() -> &'static dyn console::interface::All {
 +    &QEMU_OUTPUT
-+}
+ }
 +
 +//------------------------------------------------------------------------------
 +// OSインタフェースコード
@@ -190,7 +190,9 @@ diff -uNr 03_hacky_hello_world/src/bsp/raspberrypi/console.rs 04_safe_globals/sr
 +    fn chars_written(&self) -> usize {
 +        self.inner.lock(|inner| inner.chars_written)
 +    }
- }
++}
++
++impl console::interface::All for QEMUOutput {}
 
 diff -uNr 03_hacky_hello_world/src/console.rs 04_safe_globals/src/console.rs
 --- 03_hacky_hello_world/src/console.rs
@@ -219,46 +221,67 @@ diff -uNr 03_hacky_hello_world/src/console.rs 04_safe_globals/src/console.rs
 +        }
 +    }
 +
-+    /// 本格的コンソール用のトレイトエイリアス
-+    pub trait All = Write + Statistics;
++    /// 本格的コンソール用のトレイトエイリアス.
++    pub trait All: Write + Statistics {}
+ }
+
+ //--------------------------------------------------------------------------------------------------
+@@ -27,6 +39,6 @@
+ /// Return a reference to the console.
+ ///
+ /// This is the global console used by all printing macros.
+-pub fn console() -> impl interface::Write {
++pub fn console() -> &'static dyn interface::All {
+     bsp::console::console()
  }
 
 diff -uNr 03_hacky_hello_world/src/main.rs 04_safe_globals/src/main.rs
 --- 03_hacky_hello_world/src/main.rs
 +++ 04_safe_globals/src/main.rs
 @@ -109,6 +109,7 @@
+ #![feature(asm_const)]
  #![feature(format_args_nl)]
- #![feature(global_asm)]
  #![feature(panic_info_message)]
 +#![feature(trait_alias)]
  #![no_main]
  #![no_std]
 
-@@ -119,6 +120,7 @@
+@@ -117,6 +118,7 @@
+ mod cpu;
  mod panic_wait;
  mod print;
- mod runtime_init;
 +mod synchronization;
 
  /// 最初の初期化コード
  ///
-@@ -126,7 +128,15 @@
+@@ -124,7 +126,12 @@
  ///
  /// - アクティブなコアはこの関数を実行しているコアだけでなければならない
  unsafe fn kernel_init() -> ! {
-+    use console::interface::Statistics;
-+
-     println!("[0] Hello from Rust!");
+-    println!("Hello from Rust!");
++    use console::console;
 
 -    panic!("Stopping here.")
-+    println!(
-+        "[1] Chars written: {}",
-+        bsp::console::console().chars_written()
-+    );
++    println!("[0] Hello from Rust!");
++
++    println!("[1] Chars written: {}", console().chars_written());
 +
 +    println!("[2] Stopping here.");
 +    cpu::wait_forever()
  }
+
+diff -uNr 03_hacky_hello_world/src/print.rs 04_safe_globals/src/print.rs
+--- 03_hacky_hello_world/src/print.rs
++++ 04_safe_globals/src/print.rs
+@@ -13,8 +13,6 @@
+
+ #[doc(hidden)]
+ pub fn _print(args: fmt::Arguments) {
+-    use console::interface::Write;
+-
+     console::console().write_fmt(args).unwrap();
+ }
+
 
 diff -uNr 03_hacky_hello_world/src/synchronization.rs 04_safe_globals/src/synchronization.rs
 --- 03_hacky_hello_world/src/synchronization.rs
@@ -266,7 +289,7 @@ diff -uNr 03_hacky_hello_world/src/synchronization.rs 04_safe_globals/src/synchr
 @@ -0,0 +1,77 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2020-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2020-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! 同期プリミティブ
 +//!

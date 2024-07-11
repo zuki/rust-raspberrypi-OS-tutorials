@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 
 // Rust embedded logo for `make doc`.
-#![doc(html_logo_url = "https://git.io/JeGIp")]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/rust-embedded/wg/master/assets/logo/ewg-logo-blue-white-on-transparent.png"
+)]
 
 //! `カーネル`バイナリ。
 //!
@@ -79,7 +81,8 @@
 //!
 //! # まとめ
 //!
-//! 論理的な`カーネル`サブシステムは、対応するコードを複数の物理的な場所に分散配置//! できます。ここでは**メモリ**サブシステムの例を示します。
+//! 論理的な`カーネル`サブシステムは、対応するコードを複数の物理的な場所に分散配置//!
+//! できます。ここでは**メモリ**サブシステムの例を示します。
 //!
 //! - `src/memory.rs` と `src/memory/**/*`
 //!   - 対象となるプロセッサのアーキテクチャや`BSP`の特性に左右されない共通のコー//! ド
@@ -102,14 +105,14 @@
 //!
 //! 1. カーネルのエントリポイントは関数 `cpu::boot::arch_boot::_start()`
 //!     - 実装は `src/_arch/__arch_name__/cpu/boot.s` にある
-//! 2. アーキテクチャのセットアップが終わったら、アーキテクチャのコードは[`runtime_init::runtime_init()`]を呼び出す
+//! 2. アーキテクチャのセットアップが終わったら、
+//! アーキテクチャのコードは[`runtime_init::runtime_init()`]を呼び出す
 //!
 //! [`runtime_init::runtime_init()`]: runtime_init/fn.runtime_init.html
 
 #![allow(clippy::upper_case_acronyms)]
-#![feature(const_fn_fn_ptr_basics)]
+#![feature(asm_const)]
 #![feature(format_args_nl)]
-#![feature(global_asm)]
 #![feature(panic_info_message)]
 #![feature(trait_alias)]
 #![no_main]
@@ -119,10 +122,8 @@ mod bsp;
 mod console;
 mod cpu;
 mod driver;
-mod memory;
 mod panic_wait;
 mod print;
-mod runtime_init;
 mod synchronization;
 
 /// 最初の初期化コード
@@ -132,15 +133,14 @@ mod synchronization;
 /// - アクティブなコアはこの関数を実行しているコアだけでなければならない
 /// - この関数内のinitコールは正しい順番でなければならない
 unsafe fn kernel_init() -> ! {
-    use driver::interface::DriverManager;
-
-    for i in bsp::driver::driver_manager().all_device_drivers().iter() {
-        if let Err(x) = i.init() {
-            panic!("Error loading driver: {}: {}", i.compatible(), x);
-        }
+    // Initialize the BSP driver subsystem.
+    if let Err(x) = bsp::driver::init() {
+        panic!("Error initializing BSP driver subsystem: {}", x);
     }
-    bsp::driver::driver_manager().post_device_driver_init();
-    // println!はここから利用可能
+
+    // 全てので梅雨ドライバを初期化する.
+    driver::driver_manager().init_drivers();
+    // println! is usable from here on.
 
     // unsafeからsafeに移行
     kernel_main()
@@ -148,9 +148,7 @@ unsafe fn kernel_init() -> ! {
 
 /// 最初の初期化後に実行するメイン関数
 fn kernel_main() -> ! {
-    use bsp::console::console;
-    use console::interface::All;
-    use driver::interface::DriverManager;
+    use console::console;
 
     println!(
         "[0] {} version {}",
@@ -160,24 +158,15 @@ fn kernel_main() -> ! {
     println!("[1] Booting on: {}", bsp::board_name());
 
     println!("[2] Drivers loaded:");
-    for (i, driver) in bsp::driver::driver_manager()
-        .all_device_drivers()
-        .iter()
-        .enumerate()
-    {
-        println!("      {}. {}", i + 1, driver.compatible());
-    }
+    driver::driver_manager().enumerate();
 
-    println!(
-        "[3] Chars written: {}",
-        bsp::console::console().chars_written()
-    );
+    println!("[3] Chars written: {}", console().chars_written());
     println!("[4] Echoing input now");
 
     // エコーモードに移行する前に受信したスプリアス文字を破棄する
     console().clear_rx();
     loop {
-        let c = bsp::console::console().read_char();
-        bsp::console::console().write_char(c);
+        let c = console().read_char();
+        console().write_char(c);
     }
 }

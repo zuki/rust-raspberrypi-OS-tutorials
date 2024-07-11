@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 
 //! システムコンソール
+
+mod null_console;
+
+use crate::synchronization::{self, NullLock};
 
 //--------------------------------------------------------------------------------------------------
 // パブリック定義
@@ -48,6 +52,35 @@ pub mod interface {
         }
     }
 
+<<<<<<< HEAD
     /// 本格的コンソール用のトレイトエイリアス
     pub trait All = Write + Read + Statistics;
+=======
+    /// Trait alias for a full-fledged console.
+    pub trait All: Write + Read + Statistics {}
+}
+
+//--------------------------------------------------------------------------------------------------
+// Global instances
+//--------------------------------------------------------------------------------------------------
+
+static CUR_CONSOLE: NullLock<&'static (dyn interface::All + Sync)> =
+    NullLock::new(&null_console::NULL_CONSOLE);
+
+//--------------------------------------------------------------------------------------------------
+// Public Code
+//--------------------------------------------------------------------------------------------------
+use synchronization::interface::Mutex;
+
+/// Register a new console.
+pub fn register_console(new_console: &'static (dyn interface::All + Sync)) {
+    CUR_CONSOLE.lock(|con| *con = new_console);
+}
+
+/// Return a reference to the currently registered console.
+///
+/// This is the global console used by all printing macros.
+pub fn console() -> &'static dyn interface::All {
+    CUR_CONSOLE.lock(|con| *con)
+>>>>>>> master
 }

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 
 // Rust embedded logo for `make doc`.
-#![doc(html_logo_url = "https://git.io/JeGIp")]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/rust-embedded/wg/master/assets/logo/ewg-logo-blue-white-on-transparent.png"
+)]
 
 //! `カーネル`バイナリ。
 //!
@@ -79,7 +81,8 @@
 //!
 //! # まとめ
 //!
-//! 論理的な`カーネル`サブシステムは、対応するコードを複数の物理的な場所に分散配置//! できます。ここでは**メモリ**サブシステムの例を示します。
+//! 論理的な`カーネル`サブシステムは、対応するコードを複数の物理的な場所に分散配置//!
+//! できます。ここでは**メモリ**サブシステムの例を示します。
 //!
 //! - `src/memory.rs` と `src/memory/**/*`
 //!   - 対象となるプロセッサのアーキテクチャや`BSP`の特性に左右されない共通のコー//! ド
@@ -102,19 +105,18 @@
 //!
 //! 1. カーネルのエントリポイントは関数 `cpu::boot::arch_boot::_start()`
 //!     - 実装は `src/_arch/__arch_name__/cpu/boot.s` にある
-//! 2. アーキテクチャのセットアップが終わったら、アーキテクチャのコードは[`runtime_init::runtime_init()`]を呼び出す
+//! 2. アーキテクチャのセットアップが終わったら、
+//! アーキテクチャのコードは[`runtime_init::runtime_init()`]を呼び出す
 //!
 //! [`runtime_init::runtime_init()`]: runtime_init/fn.runtime_init.html
 
-#![feature(global_asm)]
+#![feature(asm_const)]
 #![no_main]
 #![no_std]
 
 mod bsp;
 mod cpu;
-mod memory;
 mod panic_wait;
-mod runtime_init;
 
 /// 最初の初期化コード
 ///

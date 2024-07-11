@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2021-2022 Andre Richter <andre.o.richter@gmail.com>
 
 //--------------------------------------------------------------------------------------------------
 // 定義
@@ -17,8 +17,6 @@
 	adrp	\register, \symbol
 	add	\register, \register, #:lo12:\symbol
 .endm
-
-.equ _core_id_mask, 0b11
 
 //--------------------------------------------------------------------------------------------------
 // パブリックコード

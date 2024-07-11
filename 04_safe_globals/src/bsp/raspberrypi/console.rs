@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 
 //! BSPコンソール装置
 
@@ -89,8 +89,13 @@ impl QEMUOutput {
     }
 }
 
+<<<<<<< HEAD
 /// コンソールへの参照を返す
 pub fn console() -> &'static impl console::interface::All {
+=======
+/// Return a reference to the console.
+pub fn console() -> &'static dyn console::interface::All {
+>>>>>>> master
     &QEMU_OUTPUT
 }
 
@@ -103,8 +108,13 @@ use synchronization::interface::Mutex;
 /// ガードしてアクセスをシリアライズしている
 impl console::interface::Write for QEMUOutput {
     fn write_fmt(&self, args: core::fmt::Arguments) -> fmt::Result {
+<<<<<<< HEAD
         // 可読性を高めるために`core::fmt::Write::write:fmt()`の
         // 呼び出しに完全修飾構文を採用
+=======
+        // Fully qualified syntax for the call to `core::fmt::Write::write_fmt()` to increase
+        // readability.
+>>>>>>> master
         self.inner.lock(|inner| fmt::Write::write_fmt(inner, args))
     }
 }
@@ -114,3 +124,5 @@ impl console::interface::Statistics for QEMUOutput {
         self.inner.lock(|inner| inner.chars_written)
     }
 }
+
+impl console::interface::All for QEMUOutput {}

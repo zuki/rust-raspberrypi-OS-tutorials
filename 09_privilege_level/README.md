@@ -39,7 +39,7 @@ AArch64の`EL`は`Exception Level`（特権レベル）の略です。その他�
 先に進む前に、[Programmer’s Guide forARMv8-A]の「第3章」に目を通すことを
 強く勧めます。そこには、このトピックに関する簡潔な概要が書かれています。
 
-[Programmer’s Guide forARMv8-A]: http://infocenter.arm.com/help/topic/com.arm.doc.den0024a/DEN0024A_v8_architecture_PG.pdf
+[Programmer’s Guide for ARMv8-A]: http://infocenter.arm.com/help/topic/com.arm.doc.den0024a/DEN0024A_v8_architecture_PG.pdf
 
 ## このチュートリアルの範囲
 
@@ -55,8 +55,8 @@ AArch64の`EL`は`Exception Level`（特権レベル）の略です。その他�
 ```
 // コアがEL2で実行している場合のみ処理を継続する。そうでなければパークさせる。
 mrs	x0, CurrentEL
-cmp	x0, _EL2
-b.ne	1f
+cmp	x0, {CONST_CURRENTEL_EL2}
+b.ne	.L_parking_loop
 ```
 
 その後、`boot.rs`の`prepare_el2_to_el1_transition()`を呼び出して、`EL2→EL1`の
@@ -82,7 +82,7 @@ pub unsafe extern "C" fn _start_rust(phys_boot_core_stack_end_exclusive_addr: u6
 にそれぞれのフラグを設定し、さらに仮想オフセットを0に設定して、常に実際の
 物理的な値を得るようにします。
 
-[Counter-timer Hypervisor Control register]:  https://docs.rs/cortex-a/5.1.2/src/cortex_a/regs/cnthctl_el2.rs.html
+[Counter-timer Hypervisor Control register]:  https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/registers/cnthctl_el2.rs.html
 
 ```rust
 // EL1のタイマカウンタレジスタを有効にする
@@ -95,7 +95,7 @@ CNTVOFF_EL2.set(0);
 次に、`EL1`が`AArch64`モードで実行し、（これも可能な）`AArch32`では実行
 しないように[Hypervisor Configuration Register]を設定します。
 
-[Hypervisor Configuration Register]: https://docs.rs/cortex-a/5.1.2/src/cortex_a/regs/hcr_el2.rs.html
+[Hypervisor Configuration Register]: https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/registers/hcr_el2.rs.html
 
 ```rust
 // EL1の実行モードをAArch64に設定する
@@ -107,7 +107,7 @@ HCR_EL2.write(HCR_EL2::RW::EL1IsAarch64);
 上位のELから下位のELに移行する方法は、実は1つしかなく、それは{ERET}命令を
 実行することです。
 
-[ERET]: https://docs.rs/cortex-a/5.1.2/src/cortex_a/asm.rs.html#87-96
+[ERET]: https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/asm.rs.html#92-101
 
 この命令は、[Saved Program Status Register - EL2]の内容を
 `Current Program Status Register - EL1`にコピーし、[Exception Link Register - EL2]
@@ -116,8 +116,8 @@ HCR_EL2.write(HCR_EL2::RW::EL1IsAarch64);
 これは基本的に例外が発生した時に行われることとは逆のことです。これに
 ついては、次回のチュートリアルで学びます。
 
-[Saved Program Status Register - EL2]: https://docs.rs/cortex-a/5.1.2/src/cortex_a/regs/spsr_el2.rs.html
-[Exception Link Register - EL2]: https://docs.rs/cortex-a/5.1.2/src/cortex_a/regs/elr_el2.rs.html
+[Saved Program Status Register - EL2]: https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/registers/spsr_el2.rs.html
+[Exception Link Register - EL2]: https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/registers/elr_el2.rs.html
 
 ```rust
 // 模擬例外復帰を設定する
@@ -133,7 +133,7 @@ SPSR_EL2.write(
 );
 
 // 次に、リンクレジスタが runtime_init()を指すようにする
-ELR_EL2.set(runtime_init::runtime_init as *const () as u64);
+ELR_EL2.set(crate::kernel_init as *const () as u64);
 
 // SP_EL1 (スタックポインタ)を設定する。これはEL1に「復帰した」した際に
 // EL1で使用されことになる。EL2に戻ることは全く想定していないので
@@ -143,9 +143,7 @@ SP_EL1.set(phys_boot_core_stack_end_exclusive_addr);
 
 ご覧のとおり、`ELR_EL2`にはこれまでエントリポイントから直接呼び出すために
 使用していた[runtime_init()] 関数のアドレスを設定しています。最後に、
-`SP_EL1`用のスタックポインタを設定します。
-
-[runtime_init()]: src/runtime_init.rs
+`SP_EL1`用のスタックポインタを設定します
 
 スタックのアドレスが関数の引数として与えられていることにお気づきでしょうか。
 覚えているかもしれませんが、`boot.s`の`_start()`で`EL2`用のスタックをすでに
@@ -177,6 +175,7 @@ Minipush 1.0
 [MP] ⏳ Waiting for /dev/ttyUSB0
 [MP] ✅ Serial connected
 [MP] 🔌 Please power the target now
+
  __  __ _      _ _                 _
 |  \/  (_)_ _ (_) |   ___  __ _ __| |
 | |\/| | | ' \| | |__/ _ \/ _` / _` |
@@ -188,20 +187,20 @@ Minipush 1.0
 [MP] ⏩ Pushing 14 KiB =========================================🦀 100% 0 KiB/s Time: 00:00:00
 [ML] Loaded! Executing the payload now
 
-[    0.165757] mingo version 0.9.0
-[    0.165957] Booting on: Raspberry Pi 3
-[    0.166412] Current privilege level: EL1
-[    0.166888] Exception handling state:
-[    0.167333]       Debug:  Masked
-[    0.167723]       SError: Masked
-[    0.168112]       IRQ:    Masked
-[    0.168502]       FIQ:    Masked
-[    0.168893] Architectural timer resolution: 52 ns
-[    0.169467] Drivers loaded:
-[    0.169803]       1. BCM GPIO
-[    0.170160]       2. BCM PL011 UART
-[    0.170583] Timer test, spinning for 1 second
-[    1.171115] Echoing input now
+[    0.162546] mingo version 0.9.0
+[    0.162745] Booting on: Raspberry Pi 3
+[    0.163201] Current privilege level: EL1
+[    0.163677] Exception handling state:
+[    0.164122]       Debug:  Masked
+[    0.164511]       SError: Masked
+[    0.164901]       IRQ:    Masked
+[    0.165291]       FIQ:    Masked
+[    0.165681] Architectural timer resolution: 52 ns
+[    0.166255] Drivers loaded:
+[    0.166592]       1. BCM PL011 UART
+[    0.167014]       2. BCM GPIO
+[    0.167371] Timer test, spinning for 1 second
+[    1.167904] Echoing input now
 ```
 
 ## 前回とのDiff
@@ -216,20 +215,26 @@ diff -uNr 08_hw_debug_JTAG/Cargo.toml 09_privilege_level/Cargo.toml
 -version = "0.8.0"
 +version = "0.9.0"
  authors = ["Andre Richter <andre.o.richter@gmail.com>"]
- edition = "2018"
+ edition = "2021"
 
 
 diff -uNr 08_hw_debug_JTAG/src/_arch/aarch64/cpu/boot.rs 09_privilege_level/src/_arch/aarch64/cpu/boot.rs
 --- 08_hw_debug_JTAG/src/_arch/aarch64/cpu/boot.rs
 +++ 09_privilege_level/src/_arch/aarch64/cpu/boot.rs
-@@ -12,11 +12,53 @@
+@@ -11,22 +11,73 @@
+ //!
  //! crate::cpu::boot::arch_boot
 
- use crate::runtime_init;
-+use cortex_a::{asm, regs::*};
++use aarch64_cpu::{asm, registers::*};
+ use core::arch::global_asm;
++use tock_registers::interfaces::Writeable;
 
  // Assembly counterpart to this file.
- global_asm!(include_str!("boot.s"));
+ global_asm!(
+     include_str!("boot.s"),
++    CONST_CURRENTEL_EL2 = const 0x8,
+     CONST_CORE_ID_MASK = const 0b11
+ );
 
  //--------------------------------------------------------------------------------------------------
 +// Private Code
@@ -264,8 +269,8 @@ diff -uNr 08_hw_debug_JTAG/src/_arch/aarch64/cpu/boot.rs 09_privilege_level/src/
 +            + SPSR_EL2::M::EL1h,
 +    );
 +
-+    // Second, let the link register point to runtime_init().
-+    ELR_EL2.set(runtime_init::runtime_init as *const () as u64);
++    // Second, let the link register point to kernel_init().
++    ELR_EL2.set(crate::kernel_init as *const () as u64);
 +
 +    // Set up SP_EL1 (stack pointer), which will be used by EL1 once we "return" to it. Since there
 +    // are no plans to ever return to EL2, just re-use the same stack.
@@ -276,52 +281,59 @@ diff -uNr 08_hw_debug_JTAG/src/_arch/aarch64/cpu/boot.rs 09_privilege_level/src/
  // Public Code
  //--------------------------------------------------------------------------------------------------
 
-@@ -27,7 +69,11 @@
- /// # Safety
+ /// The Rust entry of the `kernel` binary.
  ///
- /// - The `bss` section is not initialized yet. The code must not use or reference it in any way.
-+/// - Exception return from EL2 must must continue execution in EL1 with `runtime_init()`.
+ /// The function is called from the assembly `_start` function.
++///
++/// # Safety
++///
++/// - Exception return from EL2 must must continue execution in EL1 with `kernel_init()`.
  #[no_mangle]
 -pub unsafe fn _start_rust() -> ! {
--    runtime_init::runtime_init()
+-    crate::kernel_init()
 +pub unsafe extern "C" fn _start_rust(phys_boot_core_stack_end_exclusive_addr: u64) -> ! {
 +    prepare_el2_to_el1_transition(phys_boot_core_stack_end_exclusive_addr);
 +
-+    // Use `eret` to "return" to EL1. This results in execution of runtime_init() in EL1.
++    // Use `eret` to "return" to EL1. This results in execution of kernel_init() in EL1.
 +    asm::eret()
  }
 
 diff -uNr 08_hw_debug_JTAG/src/_arch/aarch64/cpu/boot.s 09_privilege_level/src/_arch/aarch64/cpu/boot.s
 --- 08_hw_debug_JTAG/src/_arch/aarch64/cpu/boot.s
 +++ 09_privilege_level/src/_arch/aarch64/cpu/boot.s
-@@ -18,6 +18,7 @@
- 	add	\register, \register, #:lo12:\symbol
- .endm
-
-+.equ _EL2, 0x8
- .equ _core_id_mask, 0b11
-
- //--------------------------------------------------------------------------------------------------
-@@ -29,6 +30,11 @@
+@@ -27,11 +27,16 @@
  // fn _start()
  //------------------------------------------------------------------------------
  _start:
 +	// Only proceed if the core executes in EL2. Park it otherwise.
 +	mrs	x0, CurrentEL
-+	cmp	x0, _EL2
-+	b.ne	1f
++	cmp	x0, {CONST_CURRENTEL_EL2}
++	b.ne	.L_parking_loop
 +
  	// Only proceed on the boot core. Park it otherwise.
- 	mrs	x1, MPIDR_EL1
- 	and	x1, x1, _core_id_mask
-@@ -38,11 +44,11 @@
+-	mrs	x0, MPIDR_EL1
+-	and	x0, x0, {CONST_CORE_ID_MASK}
+-	ldr	x1, BOOT_CORE_ID      // provided by bsp/__board_name__/cpu.rs
+-	cmp	x0, x1
++	mrs	x1, MPIDR_EL1
++	and	x1, x1, {CONST_CORE_ID_MASK}
++	ldr	x2, BOOT_CORE_ID      // provided by bsp/__board_name__/cpu.rs
++	cmp	x1, x2
+ 	b.ne	.L_parking_loop
 
- 	// If execution reaches here, it is the boot core. Now, prepare the jump to Rust code.
+ 	// If execution reaches here, it is the boot core.
+@@ -48,7 +53,7 @@
 
+ 	// Prepare the jump to Rust code.
+ .L_prepare_rust:
 -	// Set the stack pointer.
 +	// Set the stack pointer. This ensures that any code in EL2 that needs the stack will work.
  	ADR_REL	x0, __boot_core_stack_end_exclusive
  	mov	sp, x0
+
+@@ -60,7 +65,7 @@
+ 	b.eq	.L_parking_loop
+ 	str	w2, [x1]
 
 -	// Jump to Rust code.
 +	// Jump to Rust code. x0 holds the function argument provided to _start_rust().
@@ -332,10 +344,10 @@ diff -uNr 08_hw_debug_JTAG/src/_arch/aarch64/cpu/boot.s 09_privilege_level/src/_
 diff -uNr 08_hw_debug_JTAG/src/_arch/aarch64/exception/asynchronous.rs 09_privilege_level/src/_arch/aarch64/exception/asynchronous.rs
 --- 08_hw_debug_JTAG/src/_arch/aarch64/exception/asynchronous.rs
 +++ 09_privilege_level/src/_arch/aarch64/exception/asynchronous.rs
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,82 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! Architectural asynchronous exception handling.
 +//!
@@ -346,14 +358,15 @@ diff -uNr 08_hw_debug_JTAG/src/_arch/aarch64/exception/asynchronous.rs 09_privil
 +//!
 +//! crate::exception::asynchronous::arch_asynchronous
 +
-+use cortex_a::regs::*;
++use aarch64_cpu::registers::*;
++use tock_registers::interfaces::Readable;
 +
 +//--------------------------------------------------------------------------------------------------
 +// Private Definitions
 +//--------------------------------------------------------------------------------------------------
 +
 +trait DaifField {
-+    fn daif_field() -> register::Field<u64, DAIF::Register>;
++    fn daif_field() -> tock_registers::fields::Field<u64, DAIF::Register>;
 +}
 +
 +struct Debug;
@@ -366,25 +379,25 @@ diff -uNr 08_hw_debug_JTAG/src/_arch/aarch64/exception/asynchronous.rs 09_privil
 +//--------------------------------------------------------------------------------------------------
 +
 +impl DaifField for Debug {
-+    fn daif_field() -> register::Field<u64, DAIF::Register> {
++    fn daif_field() -> tock_registers::fields::Field<u64, DAIF::Register> {
 +        DAIF::D
 +    }
 +}
 +
 +impl DaifField for SError {
-+    fn daif_field() -> register::Field<u64, DAIF::Register> {
++    fn daif_field() -> tock_registers::fields::Field<u64, DAIF::Register> {
 +        DAIF::A
 +    }
 +}
 +
 +impl DaifField for IRQ {
-+    fn daif_field() -> register::Field<u64, DAIF::Register> {
++    fn daif_field() -> tock_registers::fields::Field<u64, DAIF::Register> {
 +        DAIF::I
 +    }
 +}
 +
 +impl DaifField for FIQ {
-+    fn daif_field() -> register::Field<u64, DAIF::Register> {
++    fn daif_field() -> tock_registers::fields::Field<u64, DAIF::Register> {
 +        DAIF::F
 +    }
 +}
@@ -418,10 +431,10 @@ diff -uNr 08_hw_debug_JTAG/src/_arch/aarch64/exception/asynchronous.rs 09_privil
 diff -uNr 08_hw_debug_JTAG/src/_arch/aarch64/exception.rs 09_privilege_level/src/_arch/aarch64/exception.rs
 --- 08_hw_debug_JTAG/src/_arch/aarch64/exception.rs
 +++ 09_privilege_level/src/_arch/aarch64/exception.rs
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,31 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! Architectural synchronous and asynchronous exception handling.
 +//!
@@ -432,7 +445,8 @@ diff -uNr 08_hw_debug_JTAG/src/_arch/aarch64/exception.rs 09_privilege_level/src
 +//!
 +//! crate::exception::arch_exception
 +
-+use cortex_a::regs::*;
++use aarch64_cpu::registers::*;
++use tock_registers::interfaces::Readable;
 +
 +//--------------------------------------------------------------------------------------------------
 +// Public Code
@@ -456,7 +470,7 @@ diff -uNr 08_hw_debug_JTAG/src/exception/asynchronous.rs 09_privilege_level/src/
 @@ -0,0 +1,14 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2020-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2020-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! Asynchronous exception handling.
 +
@@ -475,7 +489,7 @@ diff -uNr 08_hw_debug_JTAG/src/exception.rs 09_privilege_level/src/exception.rs
 @@ -0,0 +1,30 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2020-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2020-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! Synchronous and asynchronous exception handling.
 +
@@ -496,7 +510,7 @@ diff -uNr 08_hw_debug_JTAG/src/exception.rs 09_privilege_level/src/exception.rs
 +
 +/// Kernel privilege levels.
 +#[allow(missing_docs)]
-+#[derive(PartialEq)]
++#[derive(Eq, PartialEq)]
 +pub enum PrivilegeLevel {
 +    User,
 +    Kernel,
@@ -507,24 +521,23 @@ diff -uNr 08_hw_debug_JTAG/src/exception.rs 09_privilege_level/src/exception.rs
 diff -uNr 08_hw_debug_JTAG/src/main.rs 09_privilege_level/src/main.rs
 --- 08_hw_debug_JTAG/src/main.rs
 +++ 09_privilege_level/src/main.rs
-@@ -119,6 +119,7 @@
+@@ -121,6 +121,7 @@
  mod console;
  mod cpu;
  mod driver;
 +mod exception;
- mod memory;
  mod panic_wait;
  mod print;
-@@ -149,6 +150,8 @@
+ mod synchronization;
+@@ -148,6 +149,7 @@
 
  /// The main function running after the early init.
  fn kernel_main() -> ! {
-+    use bsp::console::console;
-+    use console::interface::All;
++    use console::console;
      use core::time::Duration;
-     use driver::interface::DriverManager;
-     use time::interface::TimeManager;
-@@ -160,6 +163,12 @@
+
+     info!(
+@@ -157,6 +159,12 @@
      );
      info!("Booting on: {}", bsp::board_name());
 
@@ -537,9 +550,9 @@ diff -uNr 08_hw_debug_JTAG/src/main.rs 09_privilege_level/src/main.rs
      info!(
          "Architectural timer resolution: {} ns",
          time::time_manager().resolution().as_nanos()
-@@ -174,11 +183,15 @@
-         info!("      {}. {}", i + 1, driver.compatible());
-     }
+@@ -165,11 +173,15 @@
+     info!("Drivers loaded:");
+     driver::driver_manager().enumerate();
 
 -    // Test a failing timer case.
 -    time::time_manager().spin_for(Duration::from_nanos(1));
@@ -553,9 +566,18 @@ diff -uNr 08_hw_debug_JTAG/src/main.rs 09_privilege_level/src/main.rs
      loop {
 -        info!("Spinning for 1 second");
 -        time::time_manager().spin_for(Duration::from_secs(1));
-+        let c = bsp::console::console().read_char();
-+        bsp::console::console().write_char(c);
++        let c = console().read_char();
++        console().write_char(c);
      }
  }
+
+diff -uNr 08_hw_debug_JTAG/tests/boot_test_string.rb 09_privilege_level/tests/boot_test_string.rb
+--- 08_hw_debug_JTAG/tests/boot_test_string.rb
++++ 09_privilege_level/tests/boot_test_string.rb
+@@ -1,3 +1,3 @@
+ # frozen_string_literal: true
+
+-EXPECTED_PRINT = 'Spinning for 1 second'
++EXPECTED_PRINT = 'Echoing input now'
 
 ```

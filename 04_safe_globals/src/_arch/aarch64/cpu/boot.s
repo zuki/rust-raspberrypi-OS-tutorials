@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2021-2022 Andre Richter <andre.o.richter@gmail.com>
 
 //--------------------------------------------------------------------------------------------------
 // 定義
@@ -18,8 +18,6 @@
 	add	\register, \register, #:lo12:\symbol
 .endm
 
-.equ _core_id_mask, 0b11
-
 //--------------------------------------------------------------------------------------------------
 // パブリックコード
 //--------------------------------------------------------------------------------------------------
@@ -29,17 +27,29 @@
 // fn _start()
 //------------------------------------------------------------------------------
 _start:
-	// ブートコア上でのみ実行する。他のコアは止める。
-	mrs	x1, MPIDR_EL1	      // MARの[7:0]がコア番号（raspi3/4はcoreを4つ搭載: 0x00-0x03）
-	and	x1, x1, _core_id_mask // _code_id_mask = 0b11; このファイルの先頭で定義
-	ldr	x2, BOOT_CORE_ID      // BOOT_CORE_ID=0: bsp/__board_name__/cpu.rs で定義
-	cmp	x1, x2
-	b.ne	1f		      // core0以外は1へジャンプ
+	// ブートコア上でのみ実行する。他のコアは止める.
+	mrs	x0, MPIDR_EL1
+	and	x0, x0, {CONST_CORE_ID_MASK}
+	ldr	x1, BOOT_CORE_ID      // provided by bsp/__board_name__/cpu.rs
+	cmp	x0, x1
+	b.ne	.L_parking_loop
 
-	// 処理がここに来たらそれはブートコア。Rustコードにジャンプするための準備をする。
+	// 処理がここに来たらそれはブートコア.
 
-	// スタックポインタを設定する。
-	ADR_REL	x0, __boot_core_stack_end_exclusive	// link.ldで定義 = 0x80000 .textの下に伸びる
+	// DRAMを初期化する.
+	ADR_REL	x0, __bss_start
+	ADR_REL x1, __bss_end_exclusive
+
+.L_bss_init_loop:
+	cmp	x0, x1
+	b.eq	.L_prepare_rust
+	stp	xzr, xzr, [x0], #16
+	b	.L_bss_init_loop
+
+	// Rustコードにジャンプするための準備をする.
+.L_prepare_rust:
+	// スタックポインタを設定する.
+	ADR_REL	x0, __boot_core_stack_end_exclusive
 	mov	sp, x0
 
 	// Rustコードにジャンプする。

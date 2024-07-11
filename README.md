@@ -4,7 +4,7 @@
 
 <br/>
 
-<img src="doc/header.jpg" height="379"> <img src="doc/minipush_demo_frontpage.gif" height="379">
+<img src="doc/header.jpg" height="372"> <img src="doc/minipush_demo_frontpage.gif" height="372">
 
 ## ℹ️ はじめに
 
@@ -26,8 +26,6 @@ _<br>Andre ([@andre-richter])_
 [ARMv8-Aアーキテクチャ]: https://developer.arm.com/products/architecture/cpu-architecture/a-profile/docs
 [モノリシック]: https://en.wikipedia.org/wiki/Monolithic_kernel
 [@andre-richter]: https://github.com/andre-richter
-[@colachg]: https://github.com/colachg
-[@readlnh]: https://github.com/readlnh
 
 ## 📑 構成
 
@@ -69,7 +67,7 @@ _実験的なもの_ です。
 ### 🚀 tl;dr
 
 1. [Dockerをインストールします][install_docker].
-1. [docker group]にユーザアカウントを追加します.
+1. (**Linux only**) [docker group]にユーザアカウントを追加します.
 1. `Rust`ツールチェーンを用意します。ほとんどのものは、最初に使用する際の
    [rust-toolchain](rust-toolchain)ファイルで処理されます。残されているのは次の
    走査だけです。
@@ -89,11 +87,17 @@ _実験的なもの_ です。
 1. `Visual Studio Code`を試用する場合は[Rust Analyzer extension]をインストールする
    ことを強く勧めます。
 
-1. Linux上で実行してい**いない**場合は、`Ruby` gemが少し必要です。
+1. (**macOS only**) `Ruby` gemを少しインストールする。
+
+  これは`macOS Monterey`上のRuby `3.0.2` でテストしています。`rbenv`を使用している場合は
+  対応する`.ruby_version`ファイルが既に置かれています。`rbenv`について聞いたことがない場合は
+   [この暗澹なガイド](https://stackoverflow.com/a/68118750)を読んでください。
+
+   以下をリポジトリのルートディレクトリで実行してください。
 
    ```bash
-   sudo gem install bundler
-   bundle config set path '.vendor/bundle'
+   bundle config set --local path '.vendor/bundle'
+   bundle config set --local without 'development'
    bundle install
    ```
 
@@ -126,7 +130,7 @@ Rustはそれ自体が既にそれを大いに助けるものになっていま�
 コンテナを覗いてみたいという方は、リポジトリの[docker](docker)フォルダを参照して
 ください。
 
-[install_docker]: https://docs.docker.com/get-docker/
+[install_docker]: https://docs.docker.com/engine/install/#server
 
 ## 📟 USBシリアル出力
 
@@ -154,12 +158,25 @@ Rustはそれ自体が既にそれを大いに助けるものになっていま�
 このチュートリアルのオリジナルバージョンは、[Zoltan Baldaszti](https://github.com/bztsrc)氏による素晴らしいC言語による[RPi3上でのベアメタルプログラミングチュートリアル]
 をフォークしたものです。ありがとうございます。
 
-## ライセンス
+### Translations of this repository
+
+ - **Chinese**
+   - [@colachg] and [@readlnh].
+   - Need updating.
+ - **Spanish**
+   -  [@zanezhub].
+   -  In the future there'll be tutorials translated to spanish.
+
+[@colachg]: https://github.com/colachg
+[@readlnh]: https://github.com/readlnh
+[@zanezhub]: https://github.com/zanezhub
+
+## License
 
 次のいずれかでライセンスされています。いずれかを選択してください。
 
-- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>)
 
 at your option.
 

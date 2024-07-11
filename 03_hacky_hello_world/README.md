@@ -19,9 +19,14 @@
 ```console
 $ make qemu
 [...]
-Hello from Rust!
 
-Kernel panic: Stopping here.
+Hello from Rust!
+Kernel panic!
+
+Panic location:
+      File 'src/main.rs', line 126, column 5
+
+Stopping here.
 ```
 
 ## 前チュートリアルとのdiff
@@ -36,13 +41,13 @@ diff -uNr 02_runtime_init/Cargo.toml 03_hacky_hello_world/Cargo.toml
 -version = "0.2.0"
 +version = "0.3.0"
  authors = ["Andre Richter <andre.o.richter@gmail.com>"]
- edition = "2018"
+ edition = "2021"
 
 
 diff -uNr 02_runtime_init/Makefile 03_hacky_hello_world/Makefile
 --- 02_runtime_init/Makefile
 +++ 03_hacky_hello_world/Makefile
-@@ -13,7 +13,7 @@
+@@ -25,7 +25,7 @@
      KERNEL_BIN        = kernel8.img
      QEMU_BINARY       = qemu-system-aarch64
      QEMU_MACHINE_TYPE = raspi3
@@ -51,7 +56,7 @@ diff -uNr 02_runtime_init/Makefile 03_hacky_hello_world/Makefile
      OBJDUMP_BINARY    = aarch64-none-elf-objdump
      NM_BINARY         = aarch64-none-elf-nm
      READELF_BINARY    = aarch64-none-elf-readelf
-@@ -24,7 +24,7 @@
+@@ -36,7 +36,7 @@
      KERNEL_BIN        = kernel8.img
      QEMU_BINARY       = qemu-system-aarch64
      QEMU_MACHINE_TYPE =
@@ -60,6 +65,58 @@ diff -uNr 02_runtime_init/Makefile 03_hacky_hello_world/Makefile
      OBJDUMP_BINARY    = aarch64-none-elf-objdump
      NM_BINARY         = aarch64-none-elf-nm
      READELF_BINARY    = aarch64-none-elf-readelf
+@@ -86,17 +86,20 @@
+     --strip-all            \
+     -O binary
+
+-EXEC_QEMU = $(QEMU_BINARY) -M $(QEMU_MACHINE_TYPE)
++EXEC_QEMU          = $(QEMU_BINARY) -M $(QEMU_MACHINE_TYPE)
++EXEC_TEST_DISPATCH = ruby ../common/tests/dispatch.rb
+
+ ##------------------------------------------------------------------------------
+ ## Dockerization
+ ##------------------------------------------------------------------------------
+-DOCKER_CMD          = docker run -t --rm -v $(shell pwd):/work/tutorial -w /work/tutorial
+-DOCKER_CMD_INTERACT = $(DOCKER_CMD) -i
++DOCKER_CMD            = docker run -t --rm -v $(shell pwd):/work/tutorial -w /work/tutorial
++DOCKER_CMD_INTERACT   = $(DOCKER_CMD) -i
++DOCKER_ARG_DIR_COMMON = -v $(shell pwd)/../common:/work/common
+
+ # DOCKER_IMAGE defined in include file (see top of this file).
+ DOCKER_QEMU  = $(DOCKER_CMD_INTERACT) $(DOCKER_IMAGE)
+ DOCKER_TOOLS = $(DOCKER_CMD) $(DOCKER_IMAGE)
++DOCKER_TEST  = $(DOCKER_CMD) $(DOCKER_ARG_DIR_COMMON) $(DOCKER_IMAGE)
+
+
+
+@@ -191,3 +194,27 @@
+ 	$(call color_header, "Launching nm")
+ 	@$(DOCKER_TOOLS) $(NM_BINARY) --demangle --print-size $(KERNEL_ELF) | sort | rustfilt
+
++
++
++##--------------------------------------------------------------------------------------------------
++## Testing targets
++##--------------------------------------------------------------------------------------------------
++.PHONY: test test_boot
++
++ifeq ($(QEMU_MACHINE_TYPE),) # QEMU is not supported for the board.
++
++test_boot test:
++	$(call color_header, "$(QEMU_MISSING_STRING)")
++
++else # QEMU is supported.
++
++##------------------------------------------------------------------------------
++## Run boot test
++##------------------------------------------------------------------------------
++test_boot: $(KERNEL_BIN)
++	$(call color_header, "Boot test - $(BSP)")
++	@$(DOCKER_TEST) $(EXEC_TEST_DISPATCH) $(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN)
++
++test: test_boot
++
++endif
 
 diff -uNr 02_runtime_init/src/bsp/raspberrypi/console.rs 03_hacky_hello_world/src/bsp/raspberrypi/console.rs
 --- 02_runtime_init/src/bsp/raspberrypi/console.rs
@@ -67,7 +124,7 @@ diff -uNr 02_runtime_init/src/bsp/raspberrypi/console.rs 03_hacky_hello_world/sr
 @@ -0,0 +1,47 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! BSPコンソール装置
 +
@@ -122,7 +179,6 @@ diff -uNr 02_runtime_init/src/bsp/raspberrypi.rs 03_hacky_hello_world/src/bsp/ra
 
 +pub mod console;
  pub mod cpu;
- pub mod memory;
 
 
 diff -uNr 02_runtime_init/src/console.rs 03_hacky_hello_world/src/console.rs
@@ -131,9 +187,11 @@ diff -uNr 02_runtime_init/src/console.rs 03_hacky_hello_world/src/console.rs
 @@ -0,0 +1,18 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! システムコンソール
++
++use crate::bsp;
 +
 +//--------------------------------------------------------------------------------------------------
 +// パブリック定義
@@ -147,16 +205,26 @@ diff -uNr 02_runtime_init/src/console.rs 03_hacky_hello_world/src/console.rs
 +    /// 読者に意図を伝える良いヒントになるので、ここで再エクスポートする。
 +    pub use core::fmt::Write;
 +}
++
++//--------------------------------------------------------------------------------------------------
++// Public Code
++//--------------------------------------------------------------------------------------------------
++
++/// Return a reference to the console.
++///
++/// This is the global console used by all printing macros.
++pub fn console() -> impl interface::Write {
++    bsp::console::console()
++}
 
 diff -uNr 02_runtime_init/src/main.rs 03_hacky_hello_world/src/main.rs
 --- 02_runtime_init/src/main.rs
 +++ 03_hacky_hello_world/src/main.rs
-@@ -106,14 +106,18 @@
- //!
- //! [`runtime_init::runtime_init()`]: runtime_init/fn.runtime_init.html
+@@ -107,12 +107,16 @@
+ //! 2. Once finished with architectural setup, the arch code calls `kernel_init()`.
 
+ #![feature(asm_const)]
 +#![feature(format_args_nl)]
- #![feature(global_asm)]
 +#![feature(panic_info_message)]
  #![no_main]
  #![no_std]
@@ -164,10 +232,8 @@ diff -uNr 02_runtime_init/src/main.rs 03_hacky_hello_world/src/main.rs
  mod bsp;
 +mod console;
  mod cpu;
- mod memory;
  mod panic_wait;
 +mod print;
- mod runtime_init;
 
  /// 最初の初期化コード
 @@ -122,5 +126,7 @@
@@ -175,7 +241,7 @@ diff -uNr 02_runtime_init/src/main.rs 03_hacky_hello_world/src/main.rs
  /// - アクティブなコアはこの関数を実行しているコアだけでなければならない
  unsafe fn kernel_init() -> ! {
 -    panic!()
-+    println!("[0] Hello from Rust!");
++    println!("Hello from Rust!");
 +
 +    panic!("Stopping here.")
  }
@@ -183,7 +249,7 @@ diff -uNr 02_runtime_init/src/main.rs 03_hacky_hello_world/src/main.rs
 diff -uNr 02_runtime_init/src/panic_wait.rs 03_hacky_hello_world/src/panic_wait.rs
 --- 02_runtime_init/src/panic_wait.rs
 +++ 03_hacky_hello_world/src/panic_wait.rs
-@@ -4,10 +4,16 @@
+@@ -4,14 +4,61 @@
 
  //! 永久に待ち続けるパニックハンドラ
 
@@ -191,14 +257,59 @@ diff -uNr 02_runtime_init/src/panic_wait.rs 03_hacky_hello_world/src/panic_wait.
 +use crate::{cpu, println};
  use core::panic::PanicInfo;
 
+ //--------------------------------------------------------------------------------------------------
+ // Private Code
+ //--------------------------------------------------------------------------------------------------
+
++/// Stop immediately if called a second time.
++///
++/// # Note
++///
++/// Using atomics here relieves us from needing to use `unsafe` for the static variable.
++///
++/// On `AArch64`, which is the only implemented architecture at the time of writing this,
++/// [`AtomicBool::load`] and [`AtomicBool::store`] are lowered to ordinary load and store
++/// instructions. They are therefore safe to use even with MMU + caching deactivated.
++///
++/// [`AtomicBool::load`]: core::sync::atomic::AtomicBool::load
++/// [`AtomicBool::store`]: core::sync::atomic::AtomicBool::store
++fn panic_prevent_reenter() {
++    use core::sync::atomic::{AtomicBool, Ordering};
++
++    #[cfg(not(target_arch = "aarch64"))]
++    compile_error!("Add the target_arch to above's check if the following code is safe to use");
++
++    static PANIC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
++
++    if !PANIC_IN_PROGRESS.load(Ordering::Relaxed) {
++        PANIC_IN_PROGRESS.store(true, Ordering::Relaxed);
++
++        return;
++    }
++
++    cpu::wait_forever()
++}
++
  #[panic_handler]
 -fn panic(_info: &PanicInfo) -> ! {
 +fn panic(info: &PanicInfo) -> ! {
-+    if let Some(args) = info.message() {
-+        println!("\nKernel panic: {}", args);
-+    } else {
-+        println!("\nKernel panic!");
-+    }
++    // Protect against panic infinite loops if any of the following code panics itself.
++    panic_prevent_reenter();
++
++    let (location, line, column) = match info.location() {
++        Some(loc) => (loc.file(), loc.line(), loc.column()),
++        _ => ("???", 0, 0),
++    };
++
++    println!(
++        "Kernel panic!\n\n\
++        Panic location:\n      File '{}', line {}, column {}\n\n\
++        {}",
++        location,
++        line,
++        column,
++        info.message().unwrap_or(&format_args!("")),
++    );
 +
      cpu::wait_forever()
  }
@@ -209,11 +320,11 @@ diff -uNr 02_runtime_init/src/print.rs 03_hacky_hello_world/src/print.rs
 @@ -0,0 +1,38 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! プリント
 +
-+use crate::{bsp, console};
++use crate::console;
 +use core::fmt;
 +
 +//--------------------------------------------------------------------------------------------------
@@ -224,7 +335,7 @@ diff -uNr 02_runtime_init/src/print.rs 03_hacky_hello_world/src/print.rs
 +pub fn _print(args: fmt::Arguments) {
 +    use console::interface::Write;
 +
-+    bsp::console::console().write_fmt(args).unwrap();
++    console::console().write_fmt(args).unwrap();
 +}
 +
 +/// 改行なしのプリント
@@ -245,5 +356,13 @@ diff -uNr 02_runtime_init/src/print.rs 03_hacky_hello_world/src/print.rs
 +        $crate::print::_print(format_args_nl!($($arg)*));
 +    })
 +}
+
+diff -uNr 02_runtime_init/tests/boot_test_string.rb 03_hacky_hello_world/tests/boot_test_string.rb
+--- 02_runtime_init/tests/boot_test_string.rb
++++ 03_hacky_hello_world/tests/boot_test_string.rb
+@@ -0,0 +1,3 @@
++# frozen_string_literal: true
++
++EXPECTED_PRINT = 'Stopping here'
 
 ```

@@ -3,6 +3,7 @@
 **/kernel8.img
 
 node_modules
+.bundle
 .vendor
 
 .DS_Store
@@ -10,4 +11,4 @@ node_modules
 docs/book
 
 Gemfile.lock
-package-lock.json
+package*.json

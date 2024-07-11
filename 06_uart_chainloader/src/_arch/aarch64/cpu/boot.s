@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2021-2022 Andre Richter <andre.o.richter@gmail.com>
 
 //--------------------------------------------------------------------------------------------------
 // 定義
@@ -29,8 +29,6 @@
 	movk	\register, #:abs_g0_nc:\symbol
 .endm
 
-.equ _core_id_mask, 0b11
-
 //--------------------------------------------------------------------------------------------------
 // パブリックコード
 //--------------------------------------------------------------------------------------------------
@@ -40,26 +38,39 @@
 // fn _start()
 //------------------------------------------------------------------------------
 _start:
-	// ブートコア上でのみ実行する。他のコアは止める。
-	mrs	x1, MPIDR_EL1	      // MARの[7:0]がコア番号（raspi3/4はcoreを4つ搭載: 0x00-0x03）
-	and	x1, x1, _core_id_mask // _code_id_mask = 0b11; このファイルの先頭で定義
-	ldr	x2, BOOT_CORE_ID      // BOOT_CORE_ID=0: bsp/__board_name__/cpu.rs で定義
-	cmp	x1, x2
-	b.ne	2f		      // core0以外は2へジャンプ
+	// ブートコア上でのみ実行する。他のコアは止める
+	mrs	x0, MPIDR_EL1			// MARの[7:0]がコア番号（raspi3/4はcoreを4つ搭載: 0x00-0x03）
+	and	x0, x0, {CONST_CORE_ID_MASK}
+	ldr	x1, BOOT_CORE_ID      // BOOT_CORE_ID=0: bsp/__board_name__/cpu.rs で定義
+	cmp	x0, x1
+	b.ne	.L_parking_loop
 
 	// 処理がここに来たらそれはブートコア。
 
-	// 次に、バイナリを再配置する
-	ADR_REL	x0, __binary_nonzero_start         // バイナリのロードアドレス
-	ADR_ABS	x1, __binary_nonzero_start         // バイナリのリンクアドレス
+	// DRAMを初期化する.
+	ADR_ABS	x0, __bss_start
+	ADR_ABS x1, __bss_end_exclusive
+
+.L_bss_init_loop:
+	cmp	x0, x1
+	b.eq	.L_relocate_binary
+	stp	xzr, xzr, [x0], #16
+	b	.L_bss_init_loop
+
+	// バイナリをリロケートする.
+.L_relocate_binary:
+	ADR_REL	x0, __binary_nonzero_start         // バイナリがロードされるアドレス
+	ADR_ABS	x1, __binary_nonzero_start         // バイナリがリンクされていたアドレス
 	ADR_ABS	x2, __binary_nonzero_end_exclusive
 
-1:	ldr	x3, [x0], #8	// x3 <- [x0]; x0+=8
-	str	x3, [x1], #8	// x3 -> [x1]; x1+=8
-	cmp	x1, x2		// x1 - x2
-	b.lo	1b		// goto 1b if x1 < x2
+.L_copy_loop:
+	ldr	x3, [x0], #8
+	str	x3, [x1], #8
+	cmp	x1, x2
+	b.lo	.L_copy_loop
 
-	// スタックポインタを設定する。
+	// Rustコードにジャンプするための準備をする.
+	// スタックポインタを設定する.
 	ADR_ABS	x0, __boot_core_stack_end_exclusive
 	mov	sp, x0
 
@@ -68,8 +79,9 @@ _start:
 	br	x1
 
 	// イベントを無限に待つ（別名 "park the core"）
-2:	wfe
-	b	2b
+.L_parking_loop:
+	wfe
+	b	.L_parking_loop
 
 .size	_start, . - _start
 .type	_start, function

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 
 //! GPIOドライバ
 
@@ -8,7 +8,11 @@ use crate::{
     bsp::device_driver::common::MMIODerefWrapper, driver, synchronization,
     synchronization::NullLock,
 };
-use register::{mmio::*, register_bitfields, register_structs};
+use tock_registers::{
+    interfaces::{ReadWriteable, Writeable},
+    register_bitfields, register_structs,
+    registers::ReadWrite,
+};
 
 //--------------------------------------------------------------------------------------------------
 // プライベート定義
@@ -104,6 +108,7 @@ register_structs! {
 /// 対応するMMIOレジスタのための抽象化
 type Registers = MMIODerefWrapper<RegisterBlock>;
 
+<<<<<<< HEAD
 //--------------------------------------------------------------------------------------------------
 // パブリック定義
 //--------------------------------------------------------------------------------------------------
@@ -114,6 +119,15 @@ pub struct GPIOInner {
 
 // BSPがpanicハンドラで使用できるように内部構造体をエクスポートする
 pub use GPIOInner as PanicGPIO;
+=======
+struct GPIOInner {
+    registers: Registers,
+}
+
+//--------------------------------------------------------------------------------------------------
+// Public Definitions
+//--------------------------------------------------------------------------------------------------
+>>>>>>> master
 
 /// GPIO HWを表す構造体
 pub struct GPIO {
@@ -121,7 +135,11 @@ pub struct GPIO {
 }
 
 //--------------------------------------------------------------------------------------------------
+<<<<<<< HEAD
 // パブリックコード
+=======
+// Private Code
+>>>>>>> master
 //--------------------------------------------------------------------------------------------------
 
 impl GPIOInner {
@@ -146,8 +164,16 @@ impl GPIOInner {
         //   - Wikipediaによると、最速のPi3のクロックは1.4GHz程度
         //   - Linuxの2837 GPIOドライバは、ステップ間で1μs待つ
         //
+<<<<<<< HEAD
         // 安全側にふって、デフォルトを2000サイクルとする。CPUのクロックが2GHzの場合、
         // この値は1μsに相当する。
+=======
+        // - According to Wikipedia, the fastest RPi4 clocks around 1.5 GHz.
+        // - The Linux 2837 GPIO driver waits 1 µs between the steps.
+        //
+        // So lets try to be on the safe side and default to 2000 cycles, which would equal 1 µs
+        // would the CPU be clocked at 2 GHz.
+>>>>>>> master
         const DELAY: usize = 2000;
 
         self.registers.GPPUD.write(GPPUD::PUD::Off);
@@ -190,8 +216,18 @@ impl GPIOInner {
     }
 }
 
+//--------------------------------------------------------------------------------------------------
+// Public Code
+//--------------------------------------------------------------------------------------------------
+
 impl GPIO {
+<<<<<<< HEAD
     /// インスタンスを作成する
+=======
+    pub const COMPATIBLE: &'static str = "BCM GPIO";
+
+    /// Create an instance.
+>>>>>>> master
     ///
     /// # 安全性
     ///
@@ -215,6 +251,6 @@ use synchronization::interface::Mutex;
 
 impl driver::interface::DeviceDriver for GPIO {
     fn compatible(&self) -> &'static str {
-        "BCM GPIO"
+        Self::COMPATIBLE
     }
 }

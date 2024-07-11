@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2020-2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2020-2023 Andre Richter <andre.o.richter@gmail.com>
 
 //! 同期プリミティブ
 //!
@@ -25,8 +25,8 @@ pub mod interface {
         /// このmutexでラップされるデータの型
         type Data;
 
-        /// mutexをロックし、ラップされたデータへの一時的可変アクセスをクロージャに保証する
-        fn lock<R>(&self, f: impl FnOnce(&mut Self::Data) -> R) -> R;
+        /// mutexをロックし、ラップされたデータへの一時的可変アクセスをクロージャに保証する.
+        fn lock<'a, R>(&'a self, f: impl FnOnce(&'a mut Self::Data) -> R) -> R;
     }
 }
 
@@ -67,7 +67,7 @@ impl<T> NullLock<T> {
 impl<T> interface::Mutex for NullLock<T> {
     type Data = T;
 
-    fn lock<R>(&self, f: impl FnOnce(&mut Self::Data) -> R) -> R {
+    fn lock<'a, R>(&'a self, f: impl FnOnce(&'a mut Self::Data) -> R) -> R {
         // 実際のロックでは、この行をカプセル化するコードがあり、
         // この可変参照が一度に一つしか渡されないことを保証している
         let data = unsafe { &mut *self.data.get() };

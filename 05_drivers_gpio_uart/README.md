@@ -2,30 +2,81 @@
 
 ## tl;dr
 
-- 先のチュートリアルで安全なグローバルを有効にしたので、最初の本物のデバイスドライバを追加するための基盤が整いました。
-- 魔法のQEMUコンソールは捨てて、本物の`UART`を使います。本格的な組み込みハッカーがするように!
+- Drivers for the real `UART` and the `GPIO` controller are added.
+- **For the first time, we will be able to run the code on the real hardware** (scroll down for
+  instructions).
 
-## 特筆すべき追加事項
+## Introduction
 
-- 初めて、実際のハードウェア上でコードを実行できるようになります。
-  - そのため、**RPi 3**と**RPi4**でビルドが区別されます。
-  - デフォルトでは`Makefile`のすべてのターゲットは**RPi 3**用にビルドします。
-  - **RPi 4**用にビルドするには、各ターゲットの前に`BSP=rpi4`を付けます。たとえば
-    - `BSP=rpi4 make`
-    - `BSP=rpi4 make doc`
-  - 残念ながら、QEMUはまだ**RPi 4**をサポートしていないので、`BSP=rpi4 make qemu`は動作しません。
-- カーネルコードで`BSP`ドライバの実装を抽象化するために`driver::interface::DeviceDriver`トレイトが追加されました。
-- ドライバは`src/bsp/device_driver`に格納されており、`BSP`で再利用できます。
-  - RPiのPL011 UARTをPinmux（`SoC`の内部から実際のHWピンに信号をルーティングすること）する`GPIO`ドライバを導入します。
-    - このドライバがどのように**RPi 3**と**RPi 4*を区別するのかに注意してください。両者はHWが異なるので、SWでそれを考慮する必要があるからです。
-  - 最も重要なのものは`PL011Uart`ドライバです。これは`console::interface::*`トレイトを実装しており、今後、メインシステムのコンソール出力として使用されます。
-- BSPは`src/bsp/raspberrypi/memory.rs`にメモリマップを含むようになりました。具体的には、RasPiのMMIOアドレスを含んでおり、各デバイスドライバのインスタンス化に使用されます。
-- `panic!`ハンドラを変更し、`println!`に依存しないようにしました。これはエラーが発生した際にロックされる可能性のあるグローバルに共有される`UART`のインストを使用しているからです（今のところ、`NullLock`のためロックは発生しませんが、本物のロックでは問題になります）。
-  - 代わりに、新しいUARTドライバインスタンスを作成し、デバイスを再初期化し、そのインスタンスをprintに使用します。これにより、システムが自身をサスペンドする前に最後の重要なメッセージをprintできる可能性が高まります。
+Now that we enabled safe globals in the previous tutorial, the infrastructure is laid for adding the
+first real device drivers. We throw out the magic QEMU console and introduce a `driver manager`,
+which allows the `BSP` to register device drivers with the `kernel`.
+
+## Driver Manager
+
+The first step consists of adding a `driver subsystem` to the kernel. The corresponding code will
+live in `src/driver.rs`. The subsystem introduces `interface::DeviceDriver`, a common trait that
+every device driver will need to implement and that is known to the kernel. A global
+`DRIVER_MANAGER` instance (of type `DriverManager`) that is instantiated in the same file serves as
+the central entity that can be called to manage all things device drivers in the kernel. For
+example, by using the globally accessible `crate::driver::driver_manager().register_driver(...)`,
+any code can can register an object with static lifetime that implements the
+`interface::DeviceDriver` trait.
+
+During kernel init, a call to `crate::driver::driver_manager().init_drivers(...)` will let the
+driver manager loop over all registered drivers and kick off their initialization, and also execute
+an optional `post-init callback` that can be registered alongside the driver. For example, this
+mechanism is used to switch over to the `UART` driver as the main system console after the `UART`
+driver has been initialized.
+
+## BSP Driver Implementation
+
+In `src/bsp/raspberrypi/driver.rs`, the function `init()` takes care of registering the `UART` and
+`GPIO` drivers. It is therefore important that during kernel init, the correct order of (i) first
+initializing the BSP driver subsystem, and only then (ii) calling the `driver_manager()` is
+followed, like the following excerpt from `main.rs` shows:
+
+```rust
+unsafe fn kernel_init() -> ! {
+    // Initialize the BSP driver subsystem.
+    if let Err(x) = bsp::driver::init() {
+        panic!("Error initializing BSP driver subsystem: {}", x);
+    }
+
+    // Initialize all device drivers.
+    driver::driver_manager().init_drivers();
+    // println! is usable from here on.
+```
+
+
+
+The drivers themselves are stored in `src/bsp/device_driver`, and can be reused between `BSP`s. The
+first driver added in these tutorials is the `PL011Uart` driver: It implements the
+`console::interface::*` traits and is from now on used as the main system console. The second driver
+is the `GPIO` driver, which pinmuxes (that is, routing signals from inside the `SoC` to actual HW
+pins) the RPi's PL011 UART accordingly. Note how the `GPIO` driver differentiates between **RPi 3**
+and **RPi 4**. Their HW is different, so we have to account for it in SW.
+
+The `BSP`s now also contain a memory map in `src/bsp/raspberrypi/memory.rs`. It provides the
+Raspberry's `MMIO` addresses which are used by the `BSP` to instantiate the respective device
+drivers, so that the driver code knows where to find the device's registers in memory.
 
 ## SDカードからのブート
 
-SDカードを用意する方法はRPi3とRPi4で異なるので注意が必要です。
+Since we have real `UART` output now, we can run the code on the real hardware. Building is
+differentiated between the **RPi 3** and the **RPi 4** due to before mentioned differences in the
+`GPIO` driver. By default, all `Makefile` targets will build for the **RPi 3**. In order to build
+for the the **RPi 4**, prepend `BSP=rpi4` to each target. For example:
+
+```console
+$ BSP=rpi4 make
+$ BSP=rpi4 make doc
+```
+
+Unfortunately, QEMU does not yet support the **RPi 4**, so `BSP=rpi4 make qemu` won't work.
+
+**Some steps for preparing the SD card differ between RPi 3 and RPi 4, so be careful in the
+following.**
 
 ### 両者に共通
 
@@ -36,7 +87,7 @@ SDカードを用意する方法はRPi3とRPi4で異なるので注意が必要�
 arm_64bit=1
 init_uart_clock=48000000
 ```
-### Pi 3
+### RPi 3
 
 3. [Raspberry Pi firmware repo](https://github.com/raspberrypi/firmware/tree/master/boot) から次のファイルをSDカードにコピーします。
     - [bootcode.bin](https://github.com/raspberrypi/firmware/raw/master/boot/bootcode.bin)
@@ -44,7 +95,7 @@ init_uart_clock=48000000
     - [start.elf](https://github.com/raspberrypi/firmware/raw/master/boot/start.elf)
 4. `make`を実行します。
 
-### Pi 4
+### RPi 4
 
 3. [Raspberry Pi firmware repo](https://github.com/raspberrypi/firmware/tree/master/boot)から次のファイルをSDカードにコピーします。
     - [fixup4.dat](https://github.com/raspberrypi/firmware/raw/master/boot/fixup4.dat)
@@ -74,6 +125,7 @@ $ DEV_SERIAL=/dev/tty.usbserial-0001 make miniterm
 
 7. USBシリアルをホストPCに接続します。
     - 接続方は[トップページのREADME](../README.md#-usb-serial-output)にあります。
+    - **注**: TX (transmit) は RX (receive) ピンに接続してください.
     - USBシリアルの電源ピンは接続**しない**でください。RX/TXとGNDだけを接続します。
 8. RPiを(USB)電源ケーブルに接続し、出力を観察します。
 
@@ -85,8 +137,8 @@ Miniterm 1.0
 [0] mingo version 0.5.0
 [1] Booting on: Raspberry Pi 3
 [2] Drivers loaded:
-      1. BCM GPIO
-      2. BCM PL011 UART
+      1. BCM PL011 UART
+      2. BCM GPIO
 [3] Chars written: 117
 [4] Echoing input now
 ```
@@ -105,7 +157,7 @@ diff -uNr 04_safe_globals/Cargo.toml 05_drivers_gpio_uart/Cargo.toml
 -version = "0.4.0"
 +version = "0.5.0"
  authors = ["Andre Richter <andre.o.richter@gmail.com>"]
- edition = "2018"
+ edition = "2021"
 
 @@ -9,8 +9,8 @@
 
@@ -113,8 +165,8 @@ diff -uNr 04_safe_globals/Cargo.toml 05_drivers_gpio_uart/Cargo.toml
  default = []
 -bsp_rpi3 = []
 -bsp_rpi4 = []
-+bsp_rpi3 = ["register"]
-+bsp_rpi4 = ["register"]
++bsp_rpi3 = ["tock-registers"]
++bsp_rpi4 = ["tock-registers"]
 
  [[bin]]
  name = "kernel"
@@ -123,64 +175,78 @@ diff -uNr 04_safe_globals/Cargo.toml 05_drivers_gpio_uart/Cargo.toml
  [dependencies]
 
 +# Optional dependencies
-+register = { version = "1.x.x", optional = true }
++tock-registers = { version = "0.8.x", default-features = false, features = ["register_types"], optional = true }
 +
  # Platform specific dependencies
  [target.'cfg(target_arch = "aarch64")'.dependencies]
- cortex-a = { version = "5.x.x" }
+ aarch64-cpu = { version = "9.x.x" }
 
 diff -uNr 04_safe_globals/Makefile 05_drivers_gpio_uart/Makefile
 --- 04_safe_globals/Makefile
 +++ 05_drivers_gpio_uart/Makefile
-@@ -7,6 +7,12 @@
- # Default to the RPi3
+@@ -13,6 +13,9 @@
+ # Default to the RPi3.
  BSP ?= rpi3
 
 +# Default to a serial device name that is common in Linux.
 +DEV_SERIAL ?= /dev/ttyUSB0
 +
-+# Query the host system's kernel name
-+UNAME_S = $(shell uname -s)
-+
- # BSP-specific arguments
- ifeq ($(BSP),rpi3)
-     TARGET            = aarch64-unknown-none-softfloat
-@@ -58,13 +64,23 @@
- DOCKER_IMAGE         = rustembedded/osdev-utils
- DOCKER_CMD           = docker run --rm -v $(shell pwd):/work/tutorial -w /work/tutorial
- DOCKER_CMD_INTERACT  = $(DOCKER_CMD) -i -t
-+DOCKER_ARG_DIR_UTILS = -v $(shell pwd)/../utils:/work/utils
-+DOCKER_ARG_DEV       = --privileged -v /dev:/dev
 
+
+ ##--------------------------------------------------------------------------------------------------
+@@ -88,6 +91,7 @@
+
+ EXEC_QEMU          = $(QEMU_BINARY) -M $(QEMU_MACHINE_TYPE)
+ EXEC_TEST_DISPATCH = ruby ../common/tests/dispatch.rb
++EXEC_MINITERM      = ruby ../common/serial/miniterm.rb
+
+ ##------------------------------------------------------------------------------
+ ## Dockerization
+@@ -95,18 +99,26 @@
+ DOCKER_CMD            = docker run -t --rm -v $(shell pwd):/work/tutorial -w /work/tutorial
+ DOCKER_CMD_INTERACT   = $(DOCKER_CMD) -i
+ DOCKER_ARG_DIR_COMMON = -v $(shell pwd)/../common:/work/common
++DOCKER_ARG_DEV        = --privileged -v /dev:/dev
+
+ # DOCKER_IMAGE defined in include file (see top of this file).
  DOCKER_QEMU  = $(DOCKER_CMD_INTERACT) $(DOCKER_IMAGE)
  DOCKER_TOOLS = $(DOCKER_CMD) $(DOCKER_IMAGE)
+ DOCKER_TEST  = $(DOCKER_CMD) $(DOCKER_ARG_DIR_COMMON) $(DOCKER_IMAGE)
 
--EXEC_QEMU = $(QEMU_BINARY) -M $(QEMU_MACHINE_TYPE)
-+# Dockerize commands that require USB device passthrough only on Linux
-+ifeq ($(UNAME_S),Linux)
++# Dockerize commands, which require USB device passthrough, only on Linux.
++ifeq ($(shell uname -s),Linux)
 +    DOCKER_CMD_DEV = $(DOCKER_CMD_INTERACT) $(DOCKER_ARG_DEV)
 +
-+    DOCKER_MINITERM = $(DOCKER_CMD_DEV) $(DOCKER_ARG_DIR_UTILS) $(DOCKER_IMAGE)
++    DOCKER_MINITERM = $(DOCKER_CMD_DEV) $(DOCKER_ARG_DIR_COMMON) $(DOCKER_IMAGE)
 +endif
 +
-+EXEC_QEMU     = $(QEMU_BINARY) -M $(QEMU_MACHINE_TYPE)
-+EXEC_MINITERM = ruby ../utils/miniterm.rb
 
--.PHONY: all $(KERNEL_ELF) $(KERNEL_BIN) doc qemu clippy clean readelf objdump nm check
-+.PHONY: all $(KERNEL_ELF) $(KERNEL_BIN) doc qemu miniterm clippy clean readelf objdump nm check
+
+ ##--------------------------------------------------------------------------------------------------
+ ## Targets
+ ##--------------------------------------------------------------------------------------------------
+-.PHONY: all doc qemu clippy clean readelf objdump nm check
++.PHONY: all doc qemu miniterm clippy clean readelf objdump nm check
 
  all: $(KERNEL_BIN)
 
-@@ -88,6 +104,9 @@
+@@ -156,9 +168,16 @@
+ qemu: $(KERNEL_BIN)
+ 	$(call color_header, "Launching QEMU")
  	@$(DOCKER_QEMU) $(EXEC_QEMU) $(QEMU_RELEASE_ARGS) -kernel $(KERNEL_BIN)
++
  endif
 
+ ##------------------------------------------------------------------------------
++## Connect to the target's serial
++##------------------------------------------------------------------------------
 +miniterm:
 +	@$(DOCKER_MINITERM) $(EXEC_MINITERM) $(DEV_SERIAL)
 +
++##------------------------------------------------------------------------------
+ ## Run clippy
+ ##------------------------------------------------------------------------------
  clippy:
- 	@RUSTFLAGS="$(RUSTFLAGS_PEDANTIC)" $(CLIPPY_CMD)
-
 
 diff -uNr 04_safe_globals/src/_arch/aarch64/cpu.rs 05_drivers_gpio_uart/src/_arch/aarch64/cpu.rs
 --- 04_safe_globals/src/_arch/aarch64/cpu.rs
@@ -207,10 +273,10 @@ diff -uNr 04_safe_globals/src/_arch/aarch64/cpu.rs 05_drivers_gpio_uart/src/_arc
 diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs
 --- 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs
 +++ 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs
-@ -0,0 +1,220 @@
+@@ -0,0 +1,228 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! GPIOドライバ
 +
@@ -218,7 +284,11 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +    bsp::device_driver::common::MMIODerefWrapper, driver, synchronization,
 +    synchronization::NullLock,
 +};
-+use register::{mmio::*, register_bitfields, register_structs};
++use tock_registers::{
++    interfaces::{ReadWriteable, Writeable},
++    register_bitfields, register_structs,
++    registers::ReadWrite,
++};
 +
 +//--------------------------------------------------------------------------------------------------
 +// プライベート定義
@@ -314,16 +384,13 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +/// 対応するMMIOレジスタのための抽象化
 +type Registers = MMIODerefWrapper<RegisterBlock>;
 +
-+//--------------------------------------------------------------------------------------------------
-+// パブリック定義
-+//--------------------------------------------------------------------------------------------------
-+
-+pub struct GPIOInner {
++struct GPIOInner {
 +    registers: Registers,
 +}
 +
-+// BSPがpanicハンドラで使用できるように内部構造体をエクスポートする
-+pub use GPIOInner as PanicGPIO;
++//--------------------------------------------------------------------------------------------------
++// パブリック定義
++//--------------------------------------------------------------------------------------------------
 +
 +/// GPIO HWを表す構造体
 +pub struct GPIO {
@@ -400,8 +467,14 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +    }
 +}
 +
++//--------------------------------------------------------------------------------------------------
++// Public Code
++//--------------------------------------------------------------------------------------------------
++
 +impl GPIO {
-+    /// インスタンスを作成する
++    pub const COMPATIBLE: &'static str = "BCM GPIO";
++
++    /// インスタンスを作成する.
 +    ///
 +    /// # 安全性
 +    ///
@@ -425,17 +498,17 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +
 +impl driver::interface::DeviceDriver for GPIO {
 +    fn compatible(&self) -> &'static str {
-+        "BCM GPIO"
++        Self::COMPATIBLE
 +    }
 +}
 
 diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs
 --- 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs
 +++ 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs
-@@ -0,0 +1,409 @@
+@@ -0,0 +1,407 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! PL011 UARTドライバ
 +//!
@@ -449,7 +522,11 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +    synchronization::NullLock,
 +};
 +use core::fmt;
-+use register::{mmio::*, register_bitfields, register_structs};
++use tock_registers::{
++    interfaces::{Readable, Writeable},
++    register_bitfields, register_structs,
++    registers::{ReadOnly, ReadWrite, WriteOnly},
++};
 +
 +//--------------------------------------------------------------------------------------------------
 +// プライベート定義
@@ -517,6 +594,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +    LCR_H [
 +        /// ワード長。このビットは送信または受信する1フレームのデータビット数を
 +        /// 示す。
++        #[allow(clippy::enum_variant_names)]
 +        WLEN OFFSET(5) NUMBITS(2) [
 +            FiveBit = 0b00,
 +            SixBit = 0b01,
@@ -606,18 +684,15 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +    NonBlocking,
 +}
 +
-+//--------------------------------------------------------------------------------------------------
-+// パブリック定義
-+//--------------------------------------------------------------------------------------------------
-+
-+pub struct PL011UartInner {
++struct PL011UartInner {
 +    registers: Registers,
 +    chars_written: usize,
 +    chars_read: usize,
 +}
 +
-+// BSPがpanicハンドラで使用できるように内部構造体をエクスポートする
-+pub use PL011UartInner as PanicUart;
++//--------------------------------------------------------------------------------------------------
++// Public Definitions
++//--------------------------------------------------------------------------------------------------
 +
 +/// UARTを表す構造体
 +pub struct PL011Uart {
@@ -625,7 +700,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +}
 +
 +//--------------------------------------------------------------------------------------------------
-+// パブリックコード
++// Private Code
 +//--------------------------------------------------------------------------------------------------
 +
 +impl PL011UartInner {
@@ -768,8 +843,14 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +    }
 +}
 +
++//--------------------------------------------------------------------------------------------------
++// Public Code
++//--------------------------------------------------------------------------------------------------
++
 +impl PL011Uart {
-+    /// インスタンスを作成する
++    pub const COMPATIBLE: &'static str = "BCM PL011 UART";
++
++    /// インスタンスを作成する.
 +    ///
 +    /// # Safety
 +    ///
@@ -788,7 +869,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +
 +impl driver::interface::DeviceDriver for PL011Uart {
 +    fn compatible(&self) -> &'static str {
-+        "BCM PL011 UART"
++        Self::COMPATIBLE
 +    }
 +
 +    unsafe fn init(&self) -> Result<(), &'static str> {
@@ -842,6 +923,8 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +        self.inner.lock(|inner| inner.chars_read)
 +    }
 +}
++
++impl console::interface::All for PL011Uart {}
 
 diff -uNr 04_safe_globals/src/bsp/device_driver/bcm.rs 05_drivers_gpio_uart/src/bsp/device_driver/bcm.rs
 --- 04_safe_globals/src/bsp/device_driver/bcm.rs
@@ -849,7 +932,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm.rs 05_drivers_gpio_uart/src/
 @@ -0,0 +1,11 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! BCM ドライバのトップレベル
 +
@@ -865,7 +948,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/common.rs 05_drivers_gpio_uart/s
 @@ -0,0 +1,38 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2020-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2020-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! 共通デバイスドライバコード
 +
@@ -908,7 +991,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver.rs 05_drivers_gpio_uart/src/bsp/
 @@ -0,0 +1,12 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! デバイスドライバ
 +
@@ -922,7 +1005,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver.rs 05_drivers_gpio_uart/src/bsp/
 diff -uNr 04_safe_globals/src/bsp/raspberrypi/console.rs 05_drivers_gpio_uart/src/bsp/raspberrypi/console.rs
 --- 04_safe_globals/src/bsp/raspberrypi/console.rs
 +++ 05_drivers_gpio_uart/src/bsp/raspberrypi/console.rs
-@@ -4,113 +4,34 @@
+@@ -4,115 +4,13 @@
 
  //! BSPコンソール装置
 
@@ -1005,11 +1088,12 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/console.rs 05_drivers_gpio_uart/sr
 -        Ok(())
 -    }
 -}
--
--//--------------------------------------------------------------------------------------------------
--// パブリックコード
--//--------------------------------------------------------------------------------------------------
--
++use crate::console;
+
+ //--------------------------------------------------------------------------------------------------
+ // パブリックコード
+ //--------------------------------------------------------------------------------------------------
+
 -impl QEMUOutput {
 -    /// 新しいインスタンスを作成する
 -    pub const fn new() -> QEMUOutput {
@@ -1051,71 +1135,99 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/console.rs 05_drivers_gpio_uart/sr
 -    fn chars_written(&self) -> usize {
 -        self.inner.lock(|inner| inner.chars_written)
 -    }
-+    &super::PL011_UART
++    &super::driver::PL011_UART
  }
+-
+-impl console::interface::All for QEMUOutput {}
 
 diff -uNr 04_safe_globals/src/bsp/raspberrypi/driver.rs 05_drivers_gpio_uart/src/bsp/raspberrypi/driver.rs
 --- 04_safe_globals/src/bsp/raspberrypi/driver.rs
 +++ 05_drivers_gpio_uart/src/bsp/raspberrypi/driver.rs
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,71 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! BSPドライバサポート
 +
-+use crate::driver;
-+
-+//--------------------------------------------------------------------------------------------------
-+// プライベート定義
-+//--------------------------------------------------------------------------------------------------
-+
-+/// デバイスドライバマネージャ型
-+struct BSPDriverManager {
-+    device_drivers: [&'static (dyn DeviceDriver + Sync); 2],
-+}
++use super::memory::map::mmio;
++use crate::{bsp::device_driver, console, driver as generic_driver};
++use core::sync::atomic::{AtomicBool, Ordering};
 +
 +//--------------------------------------------------------------------------------------------------
 +// グローバルインスンタンス
 +//--------------------------------------------------------------------------------------------------
 +
-+static BSP_DRIVER_MANAGER: BSPDriverManager = BSPDriverManager {
-+    device_drivers: [&super::GPIO, &super::PL011_UART],
-+};
++static PL011_UART: device_driver::PL011Uart =
++    unsafe { device_driver::PL011Uart::new(mmio::PL011_UART_START) };
++static GPIO: device_driver::GPIO = unsafe { device_driver::GPIO::new(mmio::GPIO_START) };
++
++//--------------------------------------------------------------------------------------------------
++// Private Code
++//--------------------------------------------------------------------------------------------------
++
++/// This must be called only after successful init of the UART driver.
++fn post_init_uart() -> Result<(), &'static str> {
++    console::register_console(&PL011_UART);
++
++    Ok(())
++}
++
++/// This must be called only after successful init of the GPIO driver.
++fn post_init_gpio() -> Result<(), &'static str> {
++    GPIO.map_pl011_uart();
++    Ok(())
++}
++
++fn driver_uart() -> Result<(), &'static str> {
++    let uart_descriptor =
++        generic_driver::DeviceDriverDescriptor::new(&PL011_UART, Some(post_init_uart));
++    generic_driver::driver_manager().register_driver(uart_descriptor);
++
++    Ok(())
++}
++
++fn driver_gpio() -> Result<(), &'static str> {
++    let gpio_descriptor = generic_driver::DeviceDriverDescriptor::new(&GPIO, Some(post_init_gpio));
++    generic_driver::driver_manager().register_driver(gpio_descriptor);
++
++    Ok(())
++}
 +
 +//--------------------------------------------------------------------------------------------------
 +// パブリックコード
 +//--------------------------------------------------------------------------------------------------
 +
-+/// ドライバマネージャへの参照を返す
-+pub fn driver_manager() -> &'static impl driver::interface::DriverManager {
-+    &BSP_DRIVER_MANAGER
-+}
-+
-+//------------------------------------------------------------------------------
-+// OSインタフェースコード
-+//------------------------------------------------------------------------------
-+use driver::interface::DeviceDriver;
-+
-+impl driver::interface::DriverManager for BSPDriverManager {
-+    fn all_device_drivers(&self) -> &[&'static (dyn DeviceDriver + Sync)] {
-+        &self.device_drivers[..]
++/// Initialize the driver subsystem.
++///
++/// # Safety
++///
++/// See child function calls.
++pub unsafe fn init() -> Result<(), &'static str> {
++    static INIT_DONE: AtomicBool = AtomicBool::new(false);
++    if INIT_DONE.load(Ordering::Relaxed) {
++        return Err("Init already done");
 +    }
 +
-+    fn post_device_driver_init(&self) {
-+        // PL011Uartの出力ピンを構成する
-+        super::GPIO.map_pl011_uart();
-+    }
++    driver_uart()?;
++    driver_gpio()?;
++
++    INIT_DONE.store(true, Ordering::Relaxed);
++    Ok(())
 +}
 
 diff -uNr 04_safe_globals/src/bsp/raspberrypi/memory.rs 05_drivers_gpio_uart/src/bsp/raspberrypi/memory.rs
 --- 04_safe_globals/src/bsp/raspberrypi/memory.rs
 +++ 05_drivers_gpio_uart/src/bsp/raspberrypi/memory.rs
-@@ -17,6 +17,38 @@
- }
-
- //--------------------------------------------------------------------------------------------------
-+// パブリック定義
+@@ -0,0 +1,37 @@
++// SPDX-License-Identifier: MIT OR Apache-2.0
++//
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
++
++//! BSP Memory Management.
++
++//--------------------------------------------------------------------------------------------------
++// Public Definitions
 +//--------------------------------------------------------------------------------------------------
 +
 +/// ボードの物理メモリアドレス
@@ -1145,32 +1257,18 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/memory.rs 05_drivers_gpio_uart/src
 +        pub const PL011_UART_START: usize = START + UART_OFFSET;
 +    }
 +}
-+
-+//--------------------------------------------------------------------------------------------------
- // パブリックコード
- //--------------------------------------------------------------------------------------------------
-
 
 diff -uNr 04_safe_globals/src/bsp/raspberrypi.rs 05_drivers_gpio_uart/src/bsp/raspberrypi.rs
 --- 04_safe_globals/src/bsp/raspberrypi.rs
 +++ 05_drivers_gpio_uart/src/bsp/raspberrypi.rs
-@@ -6,4 +6,33 @@
+@@ -4,5 +4,23 @@
 
- pub mod console;
+ //! Top-level BSP file for the Raspberry Pi 3 and 4.
+
+-pub mod console;
  pub mod cpu;
 +pub mod driver;
- pub mod memory;
-+
-+//--------------------------------------------------------------------------------------------------
-+// グローバルインスタンス
-+//--------------------------------------------------------------------------------------------------
-+use super::device_driver;
-+
-+static GPIO: device_driver::GPIO =
-+    unsafe { device_driver::GPIO::new(memory::map::mmio::GPIO_START) };
-+
-+static PL011_UART: device_driver::PL011Uart =
-+    unsafe { device_driver::PL011Uart::new(memory::map::mmio::PL011_UART_START) };
++pub mod memory;
 +
 +//--------------------------------------------------------------------------------------------------
 +// パブリックコード
@@ -1202,12 +1300,67 @@ diff -uNr 04_safe_globals/src/bsp.rs 05_drivers_gpio_uart/src/bsp.rs
  mod raspberrypi;
 
 
+diff -uNr 04_safe_globals/src/console/null_console.rs 05_drivers_gpio_uart/src/console/null_console.rs
+--- 04_safe_globals/src/console/null_console.rs
++++ 05_drivers_gpio_uart/src/console/null_console.rs
+@@ -0,0 +1,41 @@
++// SPDX-License-Identifier: MIT OR Apache-2.0
++//
++// Copyright (c) 2022-2023 Andre Richter <andre.o.richter@gmail.com>
++
++//! Null console.
++
++use super::interface;
++use core::fmt;
++
++//--------------------------------------------------------------------------------------------------
++// Public Definitions
++//--------------------------------------------------------------------------------------------------
++
++pub struct NullConsole;
++
++//--------------------------------------------------------------------------------------------------
++// Global instances
++//--------------------------------------------------------------------------------------------------
++
++pub static NULL_CONSOLE: NullConsole = NullConsole {};
++
++//--------------------------------------------------------------------------------------------------
++// Public Code
++//--------------------------------------------------------------------------------------------------
++
++impl interface::Write for NullConsole {
++    fn write_char(&self, _c: char) {}
++
++    fn write_fmt(&self, _args: fmt::Arguments) -> fmt::Result {
++        fmt::Result::Ok(())
++    }
++
++    fn flush(&self) {}
++}
++
++impl interface::Read for NullConsole {
++    fn clear_rx(&self) {}
++}
++
++impl interface::Statistics for NullConsole {}
++impl interface::All for NullConsole {}
+
 diff -uNr 04_safe_globals/src/console.rs 05_drivers_gpio_uart/src/console.rs
 --- 04_safe_globals/src/console.rs
 +++ 05_drivers_gpio_uart/src/console.rs
-@@ -12,20 +12,42 @@
- pub mod interface {
-     use core::fmt;
+@@ -4,7 +4,9 @@
+
+ //! System console.
+
+-use crate::bsp;
++mod null_console;
++
++use crate::synchronization::{self, NullLock};
+
+ //--------------------------------------------------------------------------------------------------
+ // Public Definitions
+@@ -16,8 +18,25 @@
 
 -    /// コンソール write関数
 +    /// コンソールwrite関数
@@ -1233,10 +1386,8 @@ diff -uNr 04_safe_globals/src/console.rs 05_drivers_gpio_uart/src/console.rs
 +        fn clear_rx(&self);
      }
 
-     /// コンソール統計
-     pub trait Statistics {
--        /// 書き込んだ文字数を返す
-+        /// 書き出した文字数を返す
+     /// Console statistics.
+@@ -26,19 +45,37 @@
          fn chars_written(&self) -> usize {
              0
          }
@@ -1247,9 +1398,35 @@ diff -uNr 04_safe_globals/src/console.rs 05_drivers_gpio_uart/src/console.rs
 +        }
      }
 
-     /// 本格的コンソール用のトレイトエイリアス
--    pub trait All = Write + Statistics;
-+    pub trait All = Write + Read + Statistics;
+     /// Trait alias for a full-fledged console.
+-    pub trait All: Write + Statistics {}
++    pub trait All: Write + Read + Statistics {}
+ }
+
+ //--------------------------------------------------------------------------------------------------
++// Global instances
++//--------------------------------------------------------------------------------------------------
++
++static CUR_CONSOLE: NullLock<&'static (dyn interface::All + Sync)> =
++    NullLock::new(&null_console::NULL_CONSOLE);
++
++//--------------------------------------------------------------------------------------------------
+ // Public Code
+ //--------------------------------------------------------------------------------------------------
++use synchronization::interface::Mutex;
++
++/// Register a new console.
++pub fn register_console(new_console: &'static (dyn interface::All + Sync)) {
++    CUR_CONSOLE.lock(|con| *con = new_console);
++}
+
+-/// Return a reference to the console.
++/// Return a reference to the currently registered console.
+ ///
+ /// This is the global console used by all printing macros.
+ pub fn console() -> &'static dyn interface::All {
+-    bsp::console::console()
++    CUR_CONSOLE.lock(|con| *con)
  }
 
 diff -uNr 04_safe_globals/src/cpu.rs 05_drivers_gpio_uart/src/cpu.rs
@@ -1268,12 +1445,28 @@ diff -uNr 04_safe_globals/src/cpu.rs 05_drivers_gpio_uart/src/cpu.rs
 diff -uNr 04_safe_globals/src/driver.rs 05_drivers_gpio_uart/src/driver.rs
 --- 04_safe_globals/src/driver.rs
 +++ 05_drivers_gpio_uart/src/driver.rs
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,167 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! ドライバサポート
++
++use crate::{
++    println,
++    synchronization::{interface::Mutex, NullLock},
++};
++
++//--------------------------------------------------------------------------------------------------
++// Private Definitions
++//--------------------------------------------------------------------------------------------------
++
++const NUM_DRIVERS: usize = 5;
++
++struct DriverManagerInner {
++    next_index: usize,
++    descriptors: [Option<DeviceDriverDescriptor>; NUM_DRIVERS],
++}
 +
 +//--------------------------------------------------------------------------------------------------
 +// パブリック定義
@@ -1295,73 +1488,179 @@ diff -uNr 04_safe_globals/src/driver.rs 05_drivers_gpio_uart/src/driver.rs
 +            Ok(())
 +        }
 +    }
++}
 +
-+    /// デバイスドライバ管理関数
++/// Tpye to be used as an optional callback after a driver's init() has run.
++pub type DeviceDriverPostInitCallback = unsafe fn() -> Result<(), &'static str>;
++
++/// A descriptor for device drivers.
++#[derive(Copy, Clone)]
++pub struct DeviceDriverDescriptor {
++    device_driver: &'static (dyn interface::DeviceDriver + Sync),
++    post_init_callback: Option<DeviceDriverPostInitCallback>,
++}
++
++/// Provides device driver management functions.
++pub struct DriverManager {
++    inner: NullLock<DriverManagerInner>,
++}
++
++//--------------------------------------------------------------------------------------------------
++// Global instances
++//--------------------------------------------------------------------------------------------------
++
++static DRIVER_MANAGER: DriverManager = DriverManager::new();
++
++//--------------------------------------------------------------------------------------------------
++// Private Code
++//--------------------------------------------------------------------------------------------------
++
++impl DriverManagerInner {
++    /// Create an instance.
++    pub const fn new() -> Self {
++        Self {
++            next_index: 0,
++            descriptors: [None; NUM_DRIVERS],
++        }
++    }
++}
++
++//--------------------------------------------------------------------------------------------------
++// Public Code
++//--------------------------------------------------------------------------------------------------
++
++impl DeviceDriverDescriptor {
++    /// Create an instance.
++    pub fn new(
++        device_driver: &'static (dyn interface::DeviceDriver + Sync),
++        post_init_callback: Option<DeviceDriverPostInitCallback>,
++    ) -> Self {
++        Self {
++            device_driver,
++            post_init_callback,
++        }
++    }
++}
++
++/// Return a reference to the global DriverManager.
++pub fn driver_manager() -> &'static DriverManager {
++    &DRIVER_MANAGER
++}
++
++impl DriverManager {
++    /// Create an instance.
++    pub const fn new() -> Self {
++        Self {
++            inner: NullLock::new(DriverManagerInner::new()),
++        }
++    }
++
++    /// Register a device driver with the kernel.
++    pub fn register_driver(&self, descriptor: DeviceDriverDescriptor) {
++        self.inner.lock(|inner| {
++            inner.descriptors[inner.next_index] = Some(descriptor);
++            inner.next_index += 1;
++        })
++    }
++
++    /// Helper for iterating over registered drivers.
++    fn for_each_descriptor<'a>(&'a self, f: impl FnMut(&'a DeviceDriverDescriptor)) {
++        self.inner.lock(|inner| {
++            inner
++                .descriptors
++                .iter()
++                .filter_map(|x| x.as_ref())
++                .for_each(f)
++        })
++    }
++
++    /// Fully initialize all drivers.
 +    ///
-+    /// `BSP`はグローバルインスタンスを一つ提供することが想定されている.
-+    pub trait DriverManager {
-+        /// `BSP`がインスタンス化したすべてのドライバへの参照のスライスを返す
-+        ///
-+        /// # 安全性
-+        ///
-+        /// - デバイスの順番はその`DeviceDriver::init()`が呼び出された順番
-+        fn all_device_drivers(&self) -> &[&'static (dyn DeviceDriver + Sync)];
++    /// # Safety
++    ///
++    /// - During init, drivers might do stuff with system-wide impact.
++    pub unsafe fn init_drivers(&self) {
++        self.for_each_descriptor(|descriptor| {
++            // 1. Initialize driver.
++            if let Err(x) = descriptor.device_driver.init() {
++                panic!(
++                    "Error initializing driver: {}: {}",
++                    descriptor.device_driver.compatible(),
++                    x
++                );
++            }
 +
-+        /// ドライバのinit後に実行される初期化コード
-+        ///
-+        /// たとえば、すでにオンラインになっている他のドライバに依存するデバイスドライバのコード.
-+        fn post_device_driver_init(&self);
++            // 2. Call corresponding post init callback.
++            if let Some(callback) = &descriptor.post_init_callback {
++                if let Err(x) = callback() {
++                    panic!(
++                        "Error during driver post-init callback: {}: {}",
++                        descriptor.device_driver.compatible(),
++                        x
++                    );
++                }
++            }
++        });
++    }
++
++    /// Enumerate all registered device drivers.
++    pub fn enumerate(&self) {
++        let mut i: usize = 1;
++        self.for_each_descriptor(|descriptor| {
++            println!("      {}. {}", i, descriptor.device_driver.compatible());
++
++            i += 1;
++        });
 +    }
 +}
 
 diff -uNr 04_safe_globals/src/main.rs 05_drivers_gpio_uart/src/main.rs
 --- 04_safe_globals/src/main.rs
 +++ 05_drivers_gpio_uart/src/main.rs
-@ -106,6 +106,8 @@
- //!
- //! [`runtime_init::runtime_init()`]: runtime_init/fn.runtime_init.html
+@@ -106,6 +106,7 @@
+ //!     - It is implemented in `src/_arch/__arch_name__/cpu/boot.s`.
+ //! 2. Once finished with architectural setup, the arch code calls `kernel_init()`.
 
 +#![allow(clippy::upper_case_acronyms)]
-+#![feature(const_fn_fn_ptr_basics)]
+ #![feature(asm_const)]
  #![feature(format_args_nl)]
- #![feature(global_asm)]
  #![feature(panic_info_message)]
-@@ -116,6 +118,7 @@
+@@ -116,6 +117,7 @@
  mod bsp;
  mod console;
  mod cpu;
 +mod driver;
- mod memory;
  mod panic_wait;
  mod print;
-@@ -127,16 +130,54 @@
- /// # 安全性
+ mod synchronization;
+@@ -125,13 +127,42 @@
+ /// # Safety
  ///
  /// - アクティブなコアはこの関数を実行しているコアだけでなければならない
 +/// - この関数内のinitコールは正しい順番でなければならない
  unsafe fn kernel_init() -> ! {
--    use console::interface::Statistics;
-+    use driver::interface::DriverManager;
+-    use console::console;
++    // Initialize the BSP driver subsystem.
++    if let Err(x) = bsp::driver::init() {
++        panic!("Error initializing BSP driver subsystem: {}", x);
++    }
++
++    // Initialize all device drivers.
++    driver::driver_manager().init_drivers();
++    // println! is usable from here on.
 
 -    println!("[0] Hello from Rust!");
-+    for i in bsp::driver::driver_manager().all_device_drivers().iter() {
-+        if let Err(x) = i.init() {
-+            panic!("Error loading driver: {}: {}", i.compatible(), x);
-+        }
-+    }
-+    bsp::driver::driver_manager().post_device_driver_init();
-+    // println!はここから利用可能
-+
-+    // unsafeからsafeに移行
++    // Transition from unsafe to safe.
 +    kernel_main()
 +}
-+
-+/// 最初の初期化後に実行するメイン関数
+
+-    println!("[1] Chars written: {}", console().chars_written());
++/// The main function running after the early init.
 +fn kernel_main() -> ! {
-+    use bsp::console::console;
-+    use console::interface::All;
-+    use driver::interface::DriverManager;
-+
++    use console::console;
+
+-    println!("[2] Stopping here.");
+-    cpu::wait_forever()
 +    println!(
 +        "[0] {} version {}",
 +        env!("CARGO_PKG_NAME"),
@@ -1370,75 +1669,26 @@ diff -uNr 04_safe_globals/src/main.rs 05_drivers_gpio_uart/src/main.rs
 +    println!("[1] Booting on: {}", bsp::board_name());
 +
 +    println!("[2] Drivers loaded:");
-+    for (i, driver) in bsp::driver::driver_manager()
-+        .all_device_drivers()
-+        .iter()
-+        .enumerate()
-+    {
-+        println!("      {}. {}", i + 1, driver.compatible());
-+    }
-
-     println!(
--        "[1] Chars written: {}",
-+        "[3] Chars written: {}",
-         bsp::console::console().chars_written()
-     );
++    driver::driver_manager().enumerate();
++
++    println!("[3] Chars written: {}", console().chars_written());
 +    println!("[4] Echoing input now");
-
--    println!("[2] Stopping here.");
--    cpu::wait_forever()
-+    // エコーモードに移行する前に受信したスプリアス文字を破棄する
++
++    // Discard any spurious received characters before going into echo mode.
 +    console().clear_rx();
 +    loop {
-+        let c = bsp::console::console().read_char();
-+        bsp::console::console().write_char(c);
++        let c = console().read_char();
++        console().write_char(c);
 +    }
  }
 
-diff -uNr 04_safe_globals/src/panic_wait.rs 05_drivers_gpio_uart/src/panic_wait.rs
---- 04_safe_globals/src/panic_wait.rs
-+++ 05_drivers_gpio_uart/src/panic_wait.rs
-@@ -2,17 +2,37 @@
- //
- // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
+diff -uNr 04_safe_globals/tests/boot_test_string.rb 05_drivers_gpio_uart/tests/boot_test_string.rb
+--- 04_safe_globals/tests/boot_test_string.rb
++++ 05_drivers_gpio_uart/tests/boot_test_string.rb
+@@ -1,3 +1,3 @@
+ # frozen_string_literal: true
 
--//! 永久に待ち続けるパニックハンドラ
-+//! A panic handler that infinitely waits.
+-EXPECTED_PRINT = 'Stopping here'
++EXPECTED_PRINT = 'Echoing input now'
 
--use crate::{cpu, println};
--use core::panic::PanicInfo;
-+use crate::{bsp, cpu};
-+use core::{fmt, panic::PanicInfo};
-+
-+//--------------------------------------------------------------------------------------------------
-+// Private Code
-+//--------------------------------------------------------------------------------------------------
-+
-+fn _panic_print(args: fmt::Arguments) {
-+    use fmt::Write;
-+
-+    unsafe { bsp::console::panic_console_out().write_fmt(args).unwrap() };
-+}
-+
-+/// Prints with a newline - only use from the panic handler.
-+///
-+/// Carbon copy from <https://doc.rust-lang.org/src/std/macros.rs.html>
-+#[macro_export]
-+macro_rules! panic_println {
-+    ($($arg:tt)*) => ({
-+        _panic_print(format_args_nl!($($arg)*));
-+    })
-+}
-
- #[panic_handler]
- fn panic(info: &PanicInfo) -> ! {
-     if let Some(args) = info.message() {
--        println!("\nKernel panic: {}", args);
-+        panic_println!("\nKernel panic: {}", args);
-     } else {
--        println!("\nKernel panic!");
-+        panic_println!("\nKernel panic!");
-     }
-
-     cpu::wait_forever()
 ```

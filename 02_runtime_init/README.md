@@ -21,7 +21,7 @@
     - 動作は `_arch/__arch_name__/cpu.rs` を参照してください。
 
 [bss]: https://en.wikipedia.org/wiki/.bss
-[cortex-a]: https://github.com/rust-embedded/cortex-a
+[aarch64-cpu]: https://github.com/rust-embedded/aarch64-cpu
 
 ## 前チュートリアルとのdiff
 ```diff
@@ -35,7 +35,7 @@ diff -uNr 01_wait_forever/Cargo.toml 02_runtime_init/Cargo.toml
 -version = "0.1.0"
 +version = "0.2.0"
  authors = ["Andre Richter <andre.o.richter@gmail.com>"]
- edition = "2018"
+ edition = "2021"
 
 @@ -21,3 +21,7 @@
  ##--------------------------------------------------------------------------------------------------
@@ -44,27 +44,24 @@ diff -uNr 01_wait_forever/Cargo.toml 02_runtime_init/Cargo.toml
 +
 +# Platform specific dependencies
 +[target.'cfg(target_arch = "aarch64")'.dependencies]
-+cortex-a = { version = "5.x.x" }
++aarch64-cpu = { version = "9.x.x" }
 
 diff -uNr 01_wait_forever/Makefile 02_runtime_init/Makefile
 --- 01_wait_forever/Makefile
 +++ 02_runtime_init/Makefile
-@@ -102,6 +102,8 @@
- 	$(call colorecho, "\nLaunching objdump")
+@@ -181,6 +181,7 @@
+ 	$(call color_header, "Launching objdump")
  	@$(DOCKER_TOOLS) $(OBJDUMP_BINARY) --disassemble --demangle \
                  --section .text   \
 +                --section .rodata \
-+                --section .got    \
                  $(KERNEL_ELF) | rustfilt
-
- nm: $(KERNEL_ELF)
+ ##------------------------------------------------------------------------------
 
 diff -uNr 01_wait_forever/src/_arch/aarch64/cpu/boot.rs 02_runtime_init/src/_arch/aarch64/cpu/boot.rs
 --- 01_wait_forever/src/_arch/aarch64/cpu/boot.rs
 +++ 02_runtime_init/src/_arch/aarch64/cpu/boot.rs
-@@ -11,5 +11,23 @@
- //!
- //! crate::cpu::boot::arch_boot
+@@ -14,4 +14,19 @@
+ use core::arch::global_asm;
 
 +use crate::runtime_init;
 +
@@ -84,14 +81,14 @@ diff -uNr 01_wait_forever/src/_arch/aarch64/cpu/boot.rs 02_runtime_init/src/_arc
 +/// - `bss`セクションはまだ初期化されていない。コードはbssをいかなる方法であれ、使用または参照してはならない。
 +#[no_mangle]
 +pub unsafe fn _start_rust() -> ! {
-+    runtime_init::runtime_init()
++    crate::kernel_init()
 +}
 
 diff -uNr 01_wait_forever/src/_arch/aarch64/cpu/boot.s 02_runtime_init/src/_arch/aarch64/cpu/boot.s
 --- 01_wait_forever/src/_arch/aarch64/cpu/boot.s
 +++ 02_runtime_init/src/_arch/aarch64/cpu/boot.s
-@@ -3,6 +3,24 @@
- // Copyright (c) 2021 Andre Richter <andre.o.richter@gmail.com>
+@@ -3,6 +3,22 @@
+ // Copyright (c) 2021-2023 Andre Richter <andre.o.richter@gmail.com>
 
  //--------------------------------------------------------------------------------------------------
 +// 定義
@@ -109,13 +106,11 @@ diff -uNr 01_wait_forever/src/_arch/aarch64/cpu/boot.s 02_runtime_init/src/_arch
 +       add     \register, \register, #:lo12:\symbol
 +.endm
 +
-+.equ _core_id_mask, 0b11
-+
 +//--------------------------------------------------------------------------------------------------
  // パブリックコード
  //--------------------------------------------------------------------------------------------------
  .section .text._start
-@@ -11,6 +29,22 @@
+@@ -11,6 +27,34 @@
  // fn _start()
  //------------------------------------------------------------------------------
  _start:
@@ -145,7 +140,7 @@ diff -uNr 01_wait_forever/src/_arch/aarch64/cpu.rs 02_runtime_init/src/_arch/aar
 @@ -0,0 +1,26 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! アーキテクチャ固有のブートコード。
 +//!
@@ -156,7 +151,7 @@ diff -uNr 01_wait_forever/src/_arch/aarch64/cpu.rs 02_runtime_init/src/_arch/aar
 +//!
 +//! crate::cpu::arch_cpu
 +
-+use cortex_a::asm;
++use aarch64_cpu::asm;
 +
 +//--------------------------------------------------------------------------------------------------
 +// パブリックコード
@@ -177,7 +172,7 @@ diff -uNr 01_wait_forever/src/bsp/raspberrypi/cpu.rs 02_runtime_init/src/bsp/ras
 @@ -0,0 +1,14 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! BSPプロセッサコード
 +
@@ -190,24 +185,50 @@ diff -uNr 01_wait_forever/src/bsp/raspberrypi/cpu.rs 02_runtime_init/src/bsp/ras
 +#[link_section = ".text._start_arguments"]
 +pub static BOOT_CORE_ID: u64 = 0;
 
-diff -uNr 01_wait_forever/src/bsp/raspberrypi/link.ld 02_runtime_init/src/bsp/raspberrypi/link.ld
---- 01_wait_forever/src/bsp/raspberrypi/link.ld
-+++ 02_runtime_init/src/bsp/raspberrypi/link.ld
-@@ -11,17 +11,45 @@
+diff -uNr 01_wait_forever/src/bsp/raspberrypi/kernel.ld 02_runtime_init/src/bsp/raspberrypi/kernel.ld
+--- 01_wait_forever/src/bsp/raspberrypi/kernel.ld
++++ 02_runtime_init/src/bsp/raspberrypi/kernel.ld
+@@ -3,6 +3,8 @@
+  * Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
+  */
+
++__rpi_phys_dram_start_addr = 0;
++
+ /* The physical address at which the the kernel binary will be loaded by the Raspberry's firmware */
+ __rpi_phys_binary_load_addr = 0x80000;
+
+@@ -13,21 +15,65 @@
+  *     4 == R
+  *     5 == RX
+  *     6 == RW
++ *
++ * Segments are marked PT_LOAD below so that the ELF file provides virtual and physical addresses.
++ * It doesn't mean all of them need actually be loaded.
+  */
  PHDRS
  {
-     segment_rx PT_LOAD FLAGS(5); /* 5 == RX */
-+    segment_rw PT_LOAD FLAGS(6); /* 6 == RW */
+-    segment_code PT_LOAD FLAGS(5);
++    segment_boot_core_stack PT_LOAD FLAGS(6);
++    segment_code            PT_LOAD FLAGS(5);
++    segment_data            PT_LOAD FLAGS(6);
  }
 
  SECTIONS
  {
-     . =  __rpi_load_addr;
-+                                        /*   ^             */
-+                                        /*   | stack       */
-+                                        /*   | growth      */
-+                                        /*   | direction   */
-+   __boot_core_stack_end_exclusive = .; /*   |             */
+-    . =  __rpi_phys_binary_load_addr;
++    . =  __rpi_phys_dram_start_addr;
++
++    /***********************************************************************************************
++    * Boot Core Stack
++    ***********************************************************************************************/
++    .boot_core_stack (NOLOAD) :
++    {
++                                             /*   ^             */
++                                             /*   | stack       */
++        . += __rpi_phys_binary_load_addr;    /*   | growth      */
++                                             /*   | direction   */
++        __boot_core_stack_end_exclusive = .; /*   |             */
++    } :segment_boot_core_stack
 
      /***********************************************************************************************
 -    * Code
@@ -221,20 +242,21 @@ diff -uNr 01_wait_forever/src/bsp/raspberrypi/link.ld 02_runtime_init/src/bsp/ra
 +        *(.text*)                 /* その他のすべて */
      } :segment_rx
 +
-+    .rodata : ALIGN(8) { *(.rodata*) } :segment_rx
-+    .got    : ALIGN(8) { *(.got)     } :segment_rx
++    .rodata : ALIGN(8) { *(.rodata*) } :segment_code
 +
 +    /***********************************************************************************************
 +    * Data + BSS
 +    ***********************************************************************************************/
-+    .data : { *(.data*) } :segment_rw
++    .data : { *(.data*) } :segment_data
 +
 +    /* セクションはu64のチャンクでゼロ詰めされる。start/endアドレスは8バイトアライン */
 +    .bss : ALIGN(8)
 +    {
 +        __bss_start = .;
 +        *(.bss*);
-+        . = ALIGN(8);
++        . = ALIGN(16);
++        __bss_end_exclusive = .;
++    } :segment_data
 +
 +        . += 8; /* bss == 0の場合にも __bss_start <= __bss_end_inclusive になるように詰める */
 +        __bss_end_inclusive = . - 8;
@@ -286,13 +308,12 @@ diff -uNr 01_wait_forever/src/bsp/raspberrypi/memory.rs 02_runtime_init/src/bsp/
 diff -uNr 01_wait_forever/src/bsp/raspberrypi.rs 02_runtime_init/src/bsp/raspberrypi.rs
 --- 01_wait_forever/src/bsp/raspberrypi.rs
 +++ 02_runtime_init/src/bsp/raspberrypi.rs
-@@ -4,4 +4,5 @@
+@@ -4,4 +4,4 @@
 
  //! Raspberry Pi 3/4用のトップレベルのBSPファイル
 
 -// Coming soon.
 +pub mod cpu;
-+pub mod memory;
 
 diff -uNr 01_wait_forever/src/cpu.rs 02_runtime_init/src/cpu.rs
 --- 01_wait_forever/src/cpu.rs
@@ -315,7 +336,7 @@ diff -uNr 01_wait_forever/src/cpu.rs 02_runtime_init/src/cpu.rs
 diff -uNr 01_wait_forever/src/main.rs 02_runtime_init/src/main.rs
 --- 01_wait_forever/src/main.rs
 +++ 02_runtime_init/src/main.rs
-@@ -102,14 +102,25 @@
+@@ -104,7 +104,9 @@
  //!
  //! 1. カーネルのエントリポイントは関数 `cpu::boot::arch_boot::_start()`
  //!     - 実装は `src/_arch/__arch_name__/cpu/boot.s` にある
@@ -323,16 +344,13 @@ diff -uNr 01_wait_forever/src/main.rs 02_runtime_init/src/main.rs
 +//!
 +//! [`runtime_init::runtime_init()`]: runtime_init/fn.runtime_init.html
 
--#![feature(asm)]
- #![feature(global_asm)]
++#![feature(asm_const)]
  #![no_main]
  #![no_std]
 
- mod bsp;
+@@ -112,4 +114,11 @@
  mod cpu;
-+mod memory;
  mod panic_wait;
-+mod runtime_init;
 
 -// カーネルコードは次のチュートリアルで登場
 +/// 最初の初期化コード
@@ -382,12 +400,15 @@ diff -uNr 01_wait_forever/src/memory.rs 02_runtime_init/src/memory.rs
 diff -uNr 01_wait_forever/src/panic_wait.rs 02_runtime_init/src/panic_wait.rs
 --- 01_wait_forever/src/panic_wait.rs
 +++ 02_runtime_init/src/panic_wait.rs
-@@ -4,9 +4,10 @@
+@@ -4,6 +4,7 @@
 
  //! 永久に待ち続けるパニックハンドラ
 
 +use crate::cpu;
  use core::panic::PanicInfo;
+
+ //--------------------------------------------------------------------------------------------------
+@@ -12,5 +13,5 @@
 
  #[panic_handler]
  fn panic(_info: &PanicInfo) -> ! {

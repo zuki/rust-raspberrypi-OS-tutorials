@@ -14,7 +14,7 @@
   * [Generic Kernel code: `memory/mmu.rs`](#generic-kernel-code-memorymmurs)
   * [BSP: `bsp/raspberrypi/memory/mmu.rs`](#bsp-bspraspberrypimemorymmurs)
   * [AArch64: `_arch/aarch64/memory/*`](#aarch64-_archaarch64memory)
-  * [`link.ld`](#linkld)
+  * [`kernel.ld`](#kernelld)
 - [Address translation examples](#address-translation-examples)
   * [Address translation using a 64 KiB page descriptor](#address-translation-using-a-64-kib-page-descriptor)
 - [Zero-cost abstraction](#zero-cost-abstraction)
@@ -72,7 +72,7 @@ This file contains an instance of `KernelVirtualLayout`, which stores the descri
 previously. The `BSP` is the correct place to do this, because it has knowledge of the target
 board's memory map.
 
-The policy is to only describe regions that are **not** ordinary, normal chacheable DRAM. However,
+The policy is to only describe regions that are **not** ordinary, normal cacheable DRAM. However,
 nothing prevents you from defining those too if you wish to. Here is an example for the device MMIO
 region:
 
@@ -102,7 +102,7 @@ It will be used by `_arch/aarch64`'s `MMU` code to request attributes for a virt
 translation, which delivers the physical output address (the `usize` in the return-tuple). The
 function scans for a descriptor that contains the queried address, and returns the respective
 findings for the first entry that is a hit. If no entry is found, it returns default attributes for
-normal chacheable DRAM and the input address, hence telling the `MMU` code that the requested
+normal cacheable DRAM and the input address, hence telling the `MMU` code that the requested
 address should be `identity mapped`.
 
 Due to this default behavior, it is not needed to define normal cacheable DRAM regions.
@@ -218,18 +218,18 @@ self.configure_translation_control();
 Finally, the `MMU` is turned on through the [System Control Register - EL1]. The last step also
 enables caching for data and instructions.
 
-[Translation Table Base Register 0 - EL1]: https://docs.rs/crate/cortex-a/5.1.2/source/src/regs/ttbr0_el1.rs
-[Translation Control Register - EL1]: https://docs.rs/crate/cortex-a/5.1.2/source/src/regs/tcr_el1.rs
-[System Control Register - EL1]: https://docs.rs/crate/cortex-a/5.1.2/source/src/regs/sctlr_el1.rs
+[Translation Table Base Register 0 - EL1]: https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/registers/ttbr0_el1.rs.html
+[Translation Control Register - EL1]: https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/registers/tcr_el1.rs.html
+[System Control Register - EL1]: https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/registers/sctlr_el1.rs.html
 
-### `link.ld`
+### `kernel.ld`
 
-We need to align the `rx` segment to `64 KiB` so that it doesn't overlap with the next section that
-needs read/write attributes instead of read/execute attributes:
+We need to align the `code` segment to `64 KiB` so that it doesn't overlap with the next section
+that needs read/write attributes instead of read/execute attributes:
 
 ```ld.s
-. = ALIGN(64K); /* Align to page boundary */
-__rx_end_exclusive = .;
+. = ALIGN(PAGE_SIZE);
+__code_end_exclusive = .;
 ```
 
 This blows up the binary in size, but is a small price to pay considering that it reduces the amount
@@ -257,11 +257,11 @@ The MMU init code is again a good example to see the great potential of Rust's z
 abstractions[[1]][[2]] for embedded programming.
 
 Let's take a look again at the piece of code for setting up the `MAIR_EL1` register using the
-[cortex-a] crate:
+[aarch64-cpu] crate:
 
 [1]: https://blog.rust-lang.org/2015/05/11/traits.html
 [2]: https://ruudvanasseldonk.com/2016/11/30/zero-cost-abstractions
-[cortex-a]: https://crates.io/crates/cortex-a
+[aarch64-cpu]: https://crates.io/crates/aarch64-cpu
 
 ```rust
 /// Setup function for the MAIR_EL1 register.
@@ -296,7 +296,6 @@ Turning on virtual memory is now the first thing we do during kernel init:
 
 ```rust
 unsafe fn kernel_init() -> ! {
-    use driver::interface::DriverManager;
     use memory::mmu::interface::MMU;
 
     if let Err(string) = memory::mmu::mmu().enable_mmu_and_caching() {
@@ -314,6 +313,7 @@ Minipush 1.0
 [MP] ⏳ Waiting for /dev/ttyUSB0
 [MP] ✅ Serial connected
 [MP] 🔌 Please power the target now
+
  __  __ _      _ _                 _
 |  \/  (_)_ _ (_) |   ___  __ _ __| |
 | |\/| | | ' \| | |__/ _ \/ _` / _` |
@@ -325,25 +325,25 @@ Minipush 1.0
 [MP] ⏩ Pushing 64 KiB =========================================🦀 100% 0 KiB/s Time: 00:00:00
 [ML] Loaded! Executing the payload now
 
-[    1.034062] mingo version 0.10.0
-[    1.034270] Booting on: Raspberry Pi 3
-[    1.034725] MMU online. Special regions:
-[    1.035201]       0x00080000 - 0x0008ffff |  64 KiB | C   RO PX  | Kernel code and RO data
-[    1.036220]       0x1fff0000 - 0x1fffffff |  64 KiB | Dev RW PXN | Remapped Device MMIO
-[    1.037205]       0x3f000000 - 0x4000ffff |  16 MiB | Dev RW PXN | Device MMIO
-[    1.038094] Current privilege level: EL1
-[    1.038570] Exception handling state:
-[    1.039015]       Debug:  Masked
-[    1.039405]       SError: Masked
-[    1.039794]       IRQ:    Masked
-[    1.040184]       FIQ:    Masked
-[    1.040575] Architectural timer resolution: 52 ns
-[    1.041148] Drivers loaded:
-[    1.041484]       1. BCM GPIO
-[    1.041842]       2. BCM PL011 UART
-[    1.042264] Timer test, spinning for 1 second
+[    0.811167] mingo version 0.10.0
+[    0.811374] Booting on: Raspberry Pi 3
+[    0.811829] MMU online. Special regions:
+[    0.812306]       0x00080000 - 0x0008ffff |  64 KiB | C   RO PX  | Kernel code and RO data
+[    0.813324]       0x1fff0000 - 0x1fffffff |  64 KiB | Dev RW PXN | Remapped Device MMIO
+[    0.814310]       0x3f000000 - 0x4000ffff |  17 MiB | Dev RW PXN | Device MMIO
+[    0.815198] Current privilege level: EL1
+[    0.815675] Exception handling state:
+[    0.816119]       Debug:  Masked
+[    0.816509]       SError: Masked
+[    0.816899]       IRQ:    Masked
+[    0.817289]       FIQ:    Masked
+[    0.817679] Architectural timer resolution: 52 ns
+[    0.818253] Drivers loaded:
+[    0.818589]       1. BCM PL011 UART
+[    0.819011]       2. BCM GPIO
+[    0.819369] Timer test, spinning for 1 second
 [     !!!    ] Writing through the remapped UART at 0x1FFF_1000
-[    2.043305] Echoing input now
+[    1.820409] Echoing input now
 ```
 
 ## Diff to previous
@@ -358,16 +358,16 @@ diff -uNr 09_privilege_level/Cargo.toml 10_virtual_mem_part1_identity_mapping/Ca
 -version = "0.9.0"
 +version = "0.10.0"
  authors = ["Andre Richter <andre.o.richter@gmail.com>"]
- edition = "2018"
+ edition = "2021"
 
 
 diff -uNr 09_privilege_level/src/_arch/aarch64/memory/mmu/translation_table.rs 10_virtual_mem_part1_identity_mapping/src/_arch/aarch64/memory/mmu/translation_table.rs
 --- 09_privilege_level/src/_arch/aarch64/memory/mmu/translation_table.rs
 +++ 10_virtual_mem_part1_identity_mapping/src/_arch/aarch64/memory/mmu/translation_table.rs
-@@ -0,0 +1,288 @@
+@@ -0,0 +1,292 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2021-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! Architectural translation table.
 +//!
@@ -388,7 +388,11 @@ diff -uNr 09_privilege_level/src/_arch/aarch64/memory/mmu/translation_table.rs 1
 +    },
 +};
 +use core::convert;
-+use register::{register_bitfields, InMemoryRegister};
++use tock_registers::{
++    interfaces::{Readable, Writeable},
++    register_bitfields,
++    registers::InMemoryRegister,
++};
 +
 +//--------------------------------------------------------------------------------------------------
 +// Private Definitions
@@ -549,7 +553,7 @@ diff -uNr 09_privilege_level/src/_arch/aarch64/memory/mmu/translation_table.rs 1
 +
 +/// Convert the kernel's generic memory attributes to HW-specific attributes of the MMU.
 +impl convert::From<AttributeFields>
-+    for register::FieldValue<u64, STAGE1_PAGE_DESCRIPTOR::Register>
++    for tock_registers::fields::FieldValue<u64, STAGE1_PAGE_DESCRIPTOR::Register>
 +{
 +    fn from(attribute_fields: AttributeFields) -> Self {
 +        // Memory attributes.
@@ -657,10 +661,10 @@ diff -uNr 09_privilege_level/src/_arch/aarch64/memory/mmu/translation_table.rs 1
 diff -uNr 09_privilege_level/src/_arch/aarch64/memory/mmu.rs 10_virtual_mem_part1_identity_mapping/src/_arch/aarch64/memory/mmu.rs
 --- 09_privilege_level/src/_arch/aarch64/memory/mmu.rs
 +++ 10_virtual_mem_part1_identity_mapping/src/_arch/aarch64/memory/mmu.rs
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,165 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! Memory Management Unit Driver.
 +//!
@@ -677,8 +681,9 @@ diff -uNr 09_privilege_level/src/_arch/aarch64/memory/mmu.rs 10_virtual_mem_part
 +    bsp, memory,
 +    memory::mmu::{translation_table::KernelTranslationTable, TranslationGranule},
 +};
++use aarch64_cpu::{asm::barrier, registers::*};
 +use core::intrinsics::unlikely;
-+use cortex_a::{barrier, regs::*};
++use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 +
 +//--------------------------------------------------------------------------------------------------
 +// Private Definitions
@@ -796,7 +801,7 @@ diff -uNr 09_privilege_level/src/_arch/aarch64/memory/mmu.rs 10_virtual_mem_part
 +        // Populate translation tables.
 +        KERNEL_TABLES
 +            .populate_tt_entries()
-+            .map_err(|e| MMUEnableError::Other(e))?;
++            .map_err(MMUEnableError::Other)?;
 +
 +        // Set the "Translation Table Base Register".
 +        TTBR0_EL1.set_baddr(KERNEL_TABLES.phys_base_address());
@@ -823,23 +828,38 @@ diff -uNr 09_privilege_level/src/_arch/aarch64/memory/mmu.rs 10_virtual_mem_part
 +    }
 +}
 
-diff -uNr 09_privilege_level/src/bsp/raspberrypi/link.ld 10_virtual_mem_part1_identity_mapping/src/bsp/raspberrypi/link.ld
---- 09_privilege_level/src/bsp/raspberrypi/link.ld
-+++ 10_virtual_mem_part1_identity_mapping/src/bsp/raspberrypi/link.ld
-@@ -26,6 +26,7 @@
+diff -uNr 09_privilege_level/src/bsp/raspberrypi/kernel.ld 10_virtual_mem_part1_identity_mapping/src/bsp/raspberrypi/kernel.ld
+--- 09_privilege_level/src/bsp/raspberrypi/kernel.ld
++++ 10_virtual_mem_part1_identity_mapping/src/bsp/raspberrypi/kernel.ld
+@@ -3,6 +3,9 @@
+  * Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
+  */
+
++PAGE_SIZE = 64K;
++PAGE_MASK = PAGE_SIZE - 1;
++
+ __rpi_phys_dram_start_addr = 0;
+
+ /* The physical address at which the the kernel binary will be loaded by the Raspberry's firmware */
+@@ -42,9 +45,12 @@
+         __boot_core_stack_end_exclusive = .; /*   |             */
+     } :segment_boot_core_stack
+
++    ASSERT((. & PAGE_MASK) == 0, "End of boot core stack is not page aligned")
++
      /***********************************************************************************************
      * Code + RO Data + Global Offset Table
      ***********************************************************************************************/
-+    __rx_start = .;
++    __code_start = .;
      .text :
      {
          KEEP(*(.text._start))
-@@ -37,6 +38,9 @@
-     .rodata : ALIGN(8) { *(.rodata*) } :segment_rx
-     .got    : ALIGN(8) { *(.got)     } :segment_rx
+@@ -55,6 +61,9 @@
 
-+    . = ALIGN(64K); /* Align to page boundary */
-+    __rx_end_exclusive = .;
+     .rodata : ALIGN(8) { *(.rodata*) } :segment_code
+
++    . = ALIGN(PAGE_SIZE);
++    __code_end_exclusive = .;
 +
      /***********************************************************************************************
      * Data + BSS
@@ -851,7 +871,7 @@ diff -uNr 09_privilege_level/src/bsp/raspberrypi/memory/mmu.rs 10_virtual_mem_pa
 @@ -0,0 +1,86 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! BSP Memory Management Unit.
 +
@@ -877,7 +897,7 @@ diff -uNr 09_privilege_level/src/bsp/raspberrypi/memory/mmu.rs 10_virtual_mem_pa
 +    [
 +        TranslationDescriptor {
 +            name: "Kernel code and RO data",
-+            virtual_range: rx_range_inclusive,
++            virtual_range: code_range_inclusive,
 +            physical_range_translation: Translation::Identity,
 +            attribute_fields: AttributeFields {
 +                mem_attributes: MemAttributes::CacheableDRAM,
@@ -912,10 +932,10 @@ diff -uNr 09_privilege_level/src/bsp/raspberrypi/memory/mmu.rs 10_virtual_mem_pa
 +// Private Code
 +//--------------------------------------------------------------------------------------------------
 +
-+fn rx_range_inclusive() -> RangeInclusive<usize> {
++fn code_range_inclusive() -> RangeInclusive<usize> {
 +    // Notice the subtraction to turn the exclusive end into an inclusive end.
 +    #[allow(clippy::range_minus_one)]
-+    RangeInclusive::new(super::rx_start(), super::rx_end_exclusive() - 1)
++    RangeInclusive::new(super::code_start(), super::code_end_exclusive() - 1)
 +}
 +
 +fn remapped_mmio_range_inclusive() -> RangeInclusive<usize> {
@@ -939,26 +959,53 @@ diff -uNr 09_privilege_level/src/bsp/raspberrypi/memory/mmu.rs 10_virtual_mem_pa
 diff -uNr 09_privilege_level/src/bsp/raspberrypi/memory.rs 10_virtual_mem_part1_identity_mapping/src/bsp/raspberrypi/memory.rs
 --- 09_privilege_level/src/bsp/raspberrypi/memory.rs
 +++ 10_virtual_mem_part1_identity_mapping/src/bsp/raspberrypi/memory.rs
-@@ -4,6 +4,8 @@
+@@ -3,6 +3,45 @@
+ // Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 
  //! BSP Memory Management.
-
++//!
++//! The physical memory layout.
++//!
++//! The Raspberry's firmware copies the kernel binary to 0x8_0000. The preceding region will be used
++//! as the boot core's stack.
++//!
++//! +---------------------------------------+
++//! |                                       | 0x0
++//! |                                       |                                ^
++//! | Boot-core Stack                       |                                | stack
++//! |                                       |                                | growth
++//! |                                       |                                | direction
++//! +---------------------------------------+
++//! |                                       | code_start @ 0x8_0000
++//! | .text                                 |
++//! | .rodata                               |
++//! | .got                                  |
++//! |                                       |
++//! +---------------------------------------+
++//! |                                       | code_end_exclusive
++//! | .data                                 |
++//! | .bss                                  |
++//! |                                       |
++//! +---------------------------------------+
++//! |                                       |
++//! |                                       |
 +pub mod mmu;
 +
- use core::{cell::UnsafeCell, ops::RangeInclusive};
++use core::cell::UnsafeCell;
++
++//--------------------------------------------------------------------------------------------------
++// Private Definitions
++//--------------------------------------------------------------------------------------------------
++
++// Symbols from the linker script.
++extern "Rust" {
++    static __code_start: UnsafeCell<()>;
++    static __code_end_exclusive: UnsafeCell<()>;
++}
 
  //--------------------------------------------------------------------------------------------------
-@@ -12,6 +14,9 @@
-
- // Symbols from the linker script.
- extern "Rust" {
-+    static __rx_start: UnsafeCell<()>;
-+    static __rx_end_exclusive: UnsafeCell<()>;
-+
-     static __bss_start: UnsafeCell<u64>;
-     static __bss_end_inclusive: UnsafeCell<u64>;
- }
-@@ -23,6 +28,20 @@
+ // Public Definitions
+@@ -11,6 +50,20 @@
  /// The board's physical memory map.
  #[rustfmt::skip]
  pub(super) mod map {
@@ -979,7 +1026,7 @@ diff -uNr 09_privilege_level/src/bsp/raspberrypi/memory.rs 10_virtual_mem_part1_
 
      pub const GPIO_OFFSET:         usize = 0x0020_0000;
      pub const UART_OFFSET:         usize = 0x0020_1000;
-@@ -35,6 +54,7 @@
+@@ -23,6 +76,7 @@
          pub const START:            usize =         0x3F00_0000;
          pub const GPIO_START:       usize = START + GPIO_OFFSET;
          pub const PL011_UART_START: usize = START + UART_OFFSET;
@@ -987,42 +1034,36 @@ diff -uNr 09_privilege_level/src/bsp/raspberrypi/memory.rs 10_virtual_mem_part1_
      }
 
      /// Physical devices.
-@@ -45,10 +65,35 @@
+@@ -33,5 +87,29 @@
          pub const START:            usize =         0xFE00_0000;
          pub const GPIO_START:       usize = START + GPIO_OFFSET;
          pub const PL011_UART_START: usize = START + UART_OFFSET;
 +        pub const END_INCLUSIVE:    usize =         0xFF84_FFFF;
      }
  }
-
- //--------------------------------------------------------------------------------------------------
++
++//--------------------------------------------------------------------------------------------------
 +// Private Code
 +//--------------------------------------------------------------------------------------------------
 +
-+/// Start address of the Read+Execute (RX) range.
++/// Start page address of the code segment.
 +///
 +/// # Safety
 +///
 +/// - Value is provided by the linker script and must be trusted as-is.
 +#[inline(always)]
-+fn rx_start() -> usize {
-+    unsafe { __rx_start.get() as usize }
++fn code_start() -> usize {
++    unsafe { __code_start.get() as usize }
 +}
 +
-+/// Exclusive end address of the Read+Execute (RX) range.
-+///
++/// Exclusive end page address of the code segment.
 +/// # Safety
 +///
 +/// - Value is provided by the linker script and must be trusted as-is.
 +#[inline(always)]
-+fn rx_end_exclusive() -> usize {
-+    unsafe { __rx_end_exclusive.get() as usize }
++fn code_end_exclusive() -> usize {
++    unsafe { __code_end_exclusive.get() as usize }
 +}
-+
-+//--------------------------------------------------------------------------------------------------
- // Public Code
- //--------------------------------------------------------------------------------------------------
-
 
 diff -uNr 09_privilege_level/src/bsp.rs 10_virtual_mem_part1_identity_mapping/src/bsp.rs
 --- 09_privilege_level/src/bsp.rs
@@ -1037,22 +1078,63 @@ diff -uNr 09_privilege_level/src/bsp.rs 10_virtual_mem_part1_identity_mapping/sr
  #[cfg(any(feature = "bsp_rpi3", feature = "bsp_rpi4"))]
  mod raspberrypi;
 
+diff -uNr 09_privilege_level/src/common.rs 10_virtual_mem_part1_identity_mapping/src/common.rs
+--- 09_privilege_level/src/common.rs
++++ 10_virtual_mem_part1_identity_mapping/src/common.rs
+@@ -0,0 +1,22 @@
++// SPDX-License-Identifier: MIT OR Apache-2.0
++//
++// Copyright (c) 2020-2023 Andre Richter <andre.o.richter@gmail.com>
++
++//! General purpose code.
++
++/// Convert a size into human readable format.
++pub const fn size_human_readable_ceil(size: usize) -> (usize, &'static str) {
++    const KIB: usize = 1024;
++    const MIB: usize = 1024 * 1024;
++    const GIB: usize = 1024 * 1024 * 1024;
++
++    if (size / GIB) > 0 {
++        (size.div_ceil(GIB), "GiB")
++    } else if (size / MIB) > 0 {
++        (size.div_ceil(MIB), "MiB")
++    } else if (size / KIB) > 0 {
++        (size.div_ceil(KIB), "KiB")
++    } else {
++        (size, "Byte")
++    }
++}
+
 diff -uNr 09_privilege_level/src/main.rs 10_virtual_mem_part1_identity_mapping/src/main.rs
 --- 09_privilege_level/src/main.rs
 +++ 10_virtual_mem_part1_identity_mapping/src/main.rs
-@@ -107,7 +107,11 @@
- //! [`runtime_init::runtime_init()`]: runtime_init/fn.runtime_init.html
+@@ -107,9 +107,12 @@
+ //! 2. Once finished with architectural setup, the arch code calls `kernel_init()`.
 
  #![allow(clippy::upper_case_acronyms)]
 +#![allow(incomplete_features)]
- #![feature(const_fn_fn_ptr_basics)]
-+#![feature(const_generics)]
-+#![feature(const_panic)]
+ #![feature(asm_const)]
+ #![feature(const_option)]
 +#![feature(core_intrinsics)]
  #![feature(format_args_nl)]
- #![feature(global_asm)]
++#![feature(int_roundings)]
+ #![feature(nonzero_min_max)]
  #![feature(panic_info_message)]
-@@ -132,9 +136,17 @@
+ #![feature(trait_alias)]
+@@ -118,10 +121,12 @@
+ #![no_std]
+
+ mod bsp;
++mod common;
+ mod console;
+ mod cpu;
+ mod driver;
+ mod exception;
++mod memory;
+ mod panic_wait;
+ mod print;
+ mod synchronization;
+@@ -132,8 +137,17 @@
  /// # Safety
  ///
  /// - Only a single core must be active and running this function.
@@ -1062,16 +1144,25 @@ diff -uNr 09_privilege_level/src/main.rs 10_virtual_mem_part1_identity_mapping/s
 +///       e.g. the yet-to-be-introduced spinlocks in the device drivers (which currently employ
 +///       NullLocks instead of spinlocks), will fail to work (properly) on the RPi SoCs.
  unsafe fn kernel_init() -> ! {
-     use driver::interface::DriverManager;
 +    use memory::mmu::interface::MMU;
 +
 +    if let Err(string) = memory::mmu::mmu().enable_mmu_and_caching() {
 +        panic!("MMU: {}", string);
 +    }
++
+     // Initialize the BSP driver subsystem.
+     if let Err(x) = bsp::driver::init() {
+         panic!("Error initializing BSP driver subsystem: {}", x);
+@@ -149,7 +163,7 @@
 
-     for i in bsp::driver::driver_manager().all_device_drivers().iter() {
-         if let Err(x) = i.init() {
-@@ -163,6 +175,9 @@
+ /// The main function running after the early init.
+ fn kernel_main() -> ! {
+-    use console::console;
++    use console::{console, interface::Write};
+     use core::time::Duration;
+
+     info!(
+@@ -159,6 +173,9 @@
      );
      info!("Booting on: {}", bsp::board_name());
 
@@ -1081,7 +1172,7 @@ diff -uNr 09_privilege_level/src/main.rs 10_virtual_mem_part1_identity_mapping/s
      let (_, privilege_level) = exception::current_privilege_level();
      info!("Current privilege level: {}", privilege_level);
 
-@@ -186,6 +201,13 @@
+@@ -176,6 +193,13 @@
      info!("Timer test, spinning for 1 second");
      time::time_manager().spin_for(Duration::from_secs(1));
 
@@ -1102,7 +1193,7 @@ diff -uNr 09_privilege_level/src/memory/mmu/translation_table.rs 10_virtual_mem_
 @@ -0,0 +1,14 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2021-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! Translation table.
 +
@@ -1118,10 +1209,10 @@ diff -uNr 09_privilege_level/src/memory/mmu/translation_table.rs 10_virtual_mem_
 diff -uNr 09_privilege_level/src/memory/mmu.rs 10_virtual_mem_part1_identity_mapping/src/memory/mmu.rs
 --- 09_privilege_level/src/memory/mmu.rs
 +++ 10_virtual_mem_part1_identity_mapping/src/memory/mmu.rs
-@@ -0,0 +1,264 @@
+@@ -0,0 +1,253 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
-+// Copyright (c) 2020-2021 Andre Richter <andre.o.richter@gmail.com>
++// Copyright (c) 2020-2023 Andre Richter <andre.o.richter@gmail.com>
 +
 +//! Memory Management Unit.
 +//!
@@ -1141,6 +1232,7 @@ diff -uNr 09_privilege_level/src/memory/mmu.rs 10_virtual_mem_part1_identity_map
 +
 +mod translation_table;
 +
++use crate::common;
 +use core::{fmt, ops::RangeInclusive};
 +
 +//--------------------------------------------------------------------------------------------------
@@ -1300,19 +1392,7 @@ diff -uNr 09_privilege_level/src/memory/mmu.rs 10_virtual_mem_part1_identity_map
 +        let end = *(self.virtual_range)().end();
 +        let size = end - start + 1;
 +
-+        // log2(1024).
-+        const KIB_RSHIFT: u32 = 10;
-+
-+        // log2(1024 * 1024).
-+        const MIB_RSHIFT: u32 = 20;
-+
-+        let (size, unit) = if (size >> MIB_RSHIFT) > 0 {
-+            (size >> MIB_RSHIFT, "MiB")
-+        } else if (size >> KIB_RSHIFT) > 0 {
-+            (size >> KIB_RSHIFT, "KiB")
-+        } else {
-+            (size, "Byte")
-+        };
++        let (size, unit) = common::size_human_readable_ceil(size);
 +
 +        let attr = match self.attribute_fields.mem_attributes {
 +            MemAttributes::CacheableDRAM => "C",
@@ -1387,14 +1467,13 @@ diff -uNr 09_privilege_level/src/memory/mmu.rs 10_virtual_mem_part1_identity_map
 diff -uNr 09_privilege_level/src/memory.rs 10_virtual_mem_part1_identity_mapping/src/memory.rs
 --- 09_privilege_level/src/memory.rs
 +++ 10_virtual_mem_part1_identity_mapping/src/memory.rs
-@@ -4,6 +4,8 @@
-
- //! Memory Management.
-
-+pub mod mmu;
+@@ -0,0 +1,7 @@
++// SPDX-License-Identifier: MIT OR Apache-2.0
++//
++// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
- use core::ops::RangeInclusive;
-
- //--------------------------------------------------------------------------------------------------
++//! Memory Management.
++
++pub mod mmu;
 
 ```

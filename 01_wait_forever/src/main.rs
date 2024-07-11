@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 
 // Rust embedded logo for `make doc`.
-#![doc(html_logo_url = "https://git.io/JeGIp")]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/rust-embedded/wg/master/assets/logo/ewg-logo-blue-white-on-transparent.png"
+)]
 
 //! `カーネル`バイナリ。
 //!
@@ -103,8 +105,6 @@
 //! 1. カーネルのエントリポイントは関数 `cpu::boot::arch_boot::_start()`
 //!     - 実装は `src/_arch/__arch_name__/cpu/boot.s` にある
 
-#![feature(asm)]
-#![feature(global_asm)]
 #![no_main]
 #![no_std]
 

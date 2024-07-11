@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
+// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 
 //! PL011 UARTドライバ
 //!
@@ -14,7 +14,11 @@ use crate::{
     synchronization::NullLock,
 };
 use core::fmt;
-use register::{mmio::*, register_bitfields, register_structs};
+use tock_registers::{
+    interfaces::{Readable, Writeable},
+    register_bitfields, register_structs,
+    registers::{ReadOnly, ReadWrite, WriteOnly},
+};
 
 //--------------------------------------------------------------------------------------------------
 // プライベート定義
@@ -82,6 +86,7 @@ register_bitfields! {
     LCR_H [
         /// ワード長。このビットは送信または受信する1フレームのデータビット数を
         /// 示す。
+        #[allow(clippy::enum_variant_names)]
         WLEN OFFSET(5) NUMBITS(2) [
             FiveBit = 0b00,
             SixBit = 0b01,
@@ -171,18 +176,15 @@ enum BlockingMode {
     NonBlocking,
 }
 
-//--------------------------------------------------------------------------------------------------
-// パブリック定義
-//--------------------------------------------------------------------------------------------------
-
-pub struct PL011UartInner {
+struct PL011UartInner {
     registers: Registers,
     chars_written: usize,
     chars_read: usize,
 }
 
-// BSPがpanicハンドラで使用できるように内部構造体をエクスポートする
-pub use PL011UartInner as PanicUart;
+//--------------------------------------------------------------------------------------------------
+// Public Definitions
+//--------------------------------------------------------------------------------------------------
 
 /// UARTを表す構造体
 pub struct PL011Uart {
@@ -190,7 +192,7 @@ pub struct PL011Uart {
 }
 
 //--------------------------------------------------------------------------------------------------
-// パブリックコード
+// Private Code
 //--------------------------------------------------------------------------------------------------
 
 impl PL011UartInner {
@@ -328,8 +330,14 @@ impl fmt::Write for PL011UartInner {
     }
 }
 
+//--------------------------------------------------------------------------------------------------
+// Public Code
+//--------------------------------------------------------------------------------------------------
+
 impl PL011Uart {
-    /// インスタンスを作成する
+    pub const COMPATIBLE: &'static str = "BCM PL011 UART";
+
+    /// インスタンスを作成する.
     ///
     /// # Safety
     ///
@@ -348,7 +356,7 @@ use synchronization::interface::Mutex;
 
 impl driver::interface::DeviceDriver for PL011Uart {
     fn compatible(&self) -> &'static str {
-        "BCM PL011 UART"
+        Self::COMPATIBLE
     }
 
     unsafe fn init(&self) -> Result<(), &'static str> {
@@ -402,3 +410,5 @@ impl console::interface::Statistics for PL011Uart {
         self.inner.lock(|inner| inner.chars_read)
     }
 }
+
+impl console::interface::All for PL011Uart {}
