@@ -2,46 +2,35 @@
 
 ## tl;dr
 
-- Now that we enabled safe globals in the previous tutorial, the infrastructure is laid for adding
-  the first real device drivers.
-- We throw out the magic QEMU console and use a real `UART` now. Like serious embedded hackers do!
+- 先のチュートリアルで安全なグローバルを有効にしたので、最初の本物のデバイスドライバを追加するための基盤が整いました。
+- 魔法のQEMUコンソールは捨てて、本物の`UART`を使います。本格的な組み込みハッカーがするように!
 
-## Notable additions
+## 特筆すべき追加事項
 
-- For the first time, we will be able to run the code on the real hardware.
-  - Therefore, building is now differentiated between the **RPi 3** and the **RPi4**.
-  - By default, all `Makefile` targets will build for the **RPi 3**.
-  - In order to build for the the **RPi4**, prepend `BSP=rpi4` to each target. For example:
+- 初めて、実際のハードウェア上でコードを実行できるようになります。
+  - そのため、**RPi 3**と**RPi4**でビルドが区別されます。
+  - デフォルトでは`Makefile`のすべてのターゲットは**RPi 3**用にビルドします。
+  - **RPi 4**用にビルドするには、各ターゲットの前に`BSP=rpi4`を付けます。たとえば
     - `BSP=rpi4 make`
     - `BSP=rpi4 make doc`
-  - Unfortunately, QEMU does not yet support the **RPi4**, so `BSP=rpi4 make qemu` won't work.
-- A `driver::interface::DeviceDriver` trait is added for abstracting `BSP` driver implementations
-  from kernel code.
-- Drivers are stored in `src/bsp/device_driver`, and can be reused between `BSP`s.
-    - We introduce the `GPIO` driver, which pinmuxes (that is, routing signals from inside the `SoC`
-      to actual HW pins) the RPi's PL011 UART.
-      - Note how this driver differentiates between **RPi 3** and **RPi4**. Their HW is different,
-        so we have to account for it in SW.
-    - Most importantly, the `PL011Uart` driver: It implements the `console::interface::*` traits and
-      is from now on used as the main system console output.
-- `BSP`s now contain a memory map in `src/bsp/raspberrypi/memory.rs`. In the specific case, they
-  contain the Raspberry's `MMIO` addresses which are used to instantiate the respective device
-  drivers.
-- We also modify the `panic!` handler, so that it does not anymore rely on `println!`, which uses
-  the globally-shared instance of the `UART` that might be locked when an error is encountered (for
-  now, this can't happen due to the `NullLock`, but with a real lock it becomes an issue).
-    - Instead, it creates a new UART driver instance, re-initializes the device and uses that one to
-      print. This increases the chances that the system is able to print a final important message
-      before it suspends itself.
+  - 残念ながら、QEMUはまだ**RPi 4**をサポートしていないので、`BSP=rpi4 make qemu`は動作しません。
+- カーネルコードで`BSP`ドライバの実装を抽象化するために`driver::interface::DeviceDriver`トレイトが追加されました。
+- ドライバは`src/bsp/device_driver`に格納されており、`BSP`で再利用できます。
+  - RPiのPL011 UARTをPinmux（`SoC`の内部から実際のHWピンに信号をルーティングすること）する`GPIO`ドライバを導入します。
+    - このドライバがどのように**RPi 3**と**RPi 4*を区別するのかに注意してください。両者はHWが異なるので、SWでそれを考慮する必要があるからです。
+  - 最も重要なのものは`PL011Uart`ドライバです。これは`console::interface::*`トレイトを実装しており、今後、メインシステムのコンソール出力として使用されます。
+- BSPは`src/bsp/raspberrypi/memory.rs`にメモリマップを含むようになりました。具体的には、RasPiのMMIOアドレスを含んでおり、各デバイスドライバのインスタンス化に使用されます。
+- `panic!`ハンドラを変更し、`println!`に依存しないようにしました。これはエラーが発生した際にロックされる可能性のあるグローバルに共有される`UART`のインストを使用しているからです（今のところ、`NullLock`のためロックは発生しませんが、本物のロックでは問題になります）。
+  - 代わりに、新しいUARTドライバインスタンスを作成し、デバイスを再初期化し、そのインスタンスをprintに使用します。これにより、システムが自身をサスペンドする前に最後の重要なメッセージをprintできる可能性が高まります。
 
-## Boot it from SD card
+## SDカードからのブート
 
-Some steps for preparing the SD card differ between RPi3 and RPi4, so be careful.
+SDカードを用意する方法はRPi3とRPi4で異なるので注意が必要です。
 
-### Common for both
+### 両者に共通
 
-1. Make a single `FAT32` partition named `boot`.
-2. On the card, generate a file named `config.txt` with the following contents:
+1. `boot`という名前の単一の`FAT32`パーティションを作成します。
+2. カードに次の内容の`config.txt`という名前のファイルを作成します。
 
 ```txt
 arm_64bit=1
@@ -49,46 +38,44 @@ init_uart_clock=48000000
 ```
 ### Pi 3
 
-3. Copy the following files from the [Raspberry Pi firmware repo](https://github.com/raspberrypi/firmware/tree/master/boot) onto the SD card:
+3. [Raspberry Pi firmware repo](https://github.com/raspberrypi/firmware/tree/master/boot) から次のファイルをSDカードにコピーします。
     - [bootcode.bin](https://github.com/raspberrypi/firmware/raw/master/boot/bootcode.bin)
     - [fixup.dat](https://github.com/raspberrypi/firmware/raw/master/boot/fixup.dat)
     - [start.elf](https://github.com/raspberrypi/firmware/raw/master/boot/start.elf)
-4. Run `make`.
+4. `make`を実行します。
 
 ### Pi 4
 
-3. Copy the following files from the [Raspberry Pi firmware repo](https://github.com/raspberrypi/firmware/tree/master/boot) onto the SD card:
+3. [Raspberry Pi firmware repo](https://github.com/raspberrypi/firmware/tree/master/boot)から次のファイルをSDカードにコピーします。
     - [fixup4.dat](https://github.com/raspberrypi/firmware/raw/master/boot/fixup4.dat)
     - [start4.elf](https://github.com/raspberrypi/firmware/raw/master/boot/start4.elf)
     - [bcm2711-rpi-4-b.dtb](https://github.com/raspberrypi/firmware/raw/master/boot/bcm2711-rpi-4-b.dtb)
-4. Run `BSP=rpi4 make`.
+4. `BSP=rpi4 make`を実行します。
 
 
-_**Note**: Should it not work on your RPi4, try renaming `start4.elf` to `start.elf` (without the 4)
-on the SD card._
+_**注意**: RPi4で動かなかった場合は、カード上の`start4.elf`を`start.elf`と改名（4を取る）してみてください。_
 
-### Common again
+### 再度、両者共通
 
-5. Copy the `kernel8.img` onto the SD card and insert it back into the RPi.
-6. Run the `miniterm` target, which opens the UART device on the host:
+5. SDカードに`kernel8.img`をコピーして、RPiに再度挿入します。
+6. ホスト上のUARTデバイスを開く、`miniterm`ターゲットを実行します。
 
 ```console
 $ make miniterm
 ```
 
-> ❗ **NOTE**: `Miniterm` assumes a default serial device name of `/dev/ttyUSB0`. Depending on your
-> host operating system, the device name might differ. For example, on `macOS`, it might be
-> something like `/dev/tty.usbserial-0001`. In this case, please give the name explicitly:
-
+> ❗ **注意**: `Miniterm`はデフォルトのシリアルデバイス名を`/dev/ttyUSB0`としています。使用する. Depending on your
+> ホストOSにより、デバイス名は異なる場合があります。たとえば、`macOS`では`/dev/tty.usbserial-0001`の
+> ような名前になります。この場合は、名前を明示的に与えてください。
 
 ```console
 $ DEV_SERIAL=/dev/tty.usbserial-0001 make miniterm
 ```
 
-7. Connect the USB serial to your host PC.
-    - Wiring diagram at [top-level README](../README.md#-usb-serial-output).
-    - Make sure that you **DID NOT** connect the power pin of the USB serial. Only RX/TX and GND.
-8. Connect the RPi to the (USB) power cable and observe the output:
+7. USBシリアルをホストPCに接続します。
+    - 接続方は[トップページのREADME](../README.md#-usb-serial-output)にあります。
+    - USBシリアルの電源ピンは接続**しない**でください。RX/TXとGNDだけを接続します。
+8. RPiを(USB)電源ケーブルに接続し、出力を観察します。
 
 ```console
 Miniterm 1.0
@@ -104,9 +91,9 @@ Miniterm 1.0
 [4] Echoing input now
 ```
 
-8. Exit by pressing <kbd>ctrl-c</kbd>.
+8. 終了するには<kbd>ctrl-c</kbd>を押下します。
 
-## Diff to previous
+## 前チュートリアルとのdiff
 ```diff
 
 diff -uNr 04_safe_globals/Cargo.toml 05_drivers_gpio_uart/Cargo.toml
@@ -199,12 +186,12 @@ diff -uNr 04_safe_globals/src/_arch/aarch64/cpu.rs 05_drivers_gpio_uart/src/_arc
 --- 04_safe_globals/src/_arch/aarch64/cpu.rs
 +++ 05_drivers_gpio_uart/src/_arch/aarch64/cpu.rs
 @@ -17,6 +17,17 @@
- // Public Code
+ // パブリックコード
  //--------------------------------------------------------------------------------------------------
 
 +pub use asm::nop;
 +
-+/// Spin for `n` cycles.
++/// `n`サイクルスピンする
 +#[cfg(feature = "bsp_rpi3")]
 +#[inline(always)]
 +pub fn spin_for_cycles(n: usize) {
@@ -213,19 +200,19 @@ diff -uNr 04_safe_globals/src/_arch/aarch64/cpu.rs 05_drivers_gpio_uart/src/_arc
 +    }
 +}
 +
- /// Pause execution on the core.
+ /// コア上での実行を休止する
  #[inline(always)]
  pub fn wait_forever() -> ! {
 
 diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs
 --- 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs
 +++ 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs
-@@ -0,0 +1,221 @@
+@ -0,0 +1,220 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
 +// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! GPIO Driver.
++//! GPIOドライバ
 +
 +use crate::{
 +    bsp::device_driver::common::MMIODerefWrapper, driver, synchronization,
@@ -234,20 +221,20 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +use register::{mmio::*, register_bitfields, register_structs};
 +
 +//--------------------------------------------------------------------------------------------------
-+// Private Definitions
++// プライベート定義
 +//--------------------------------------------------------------------------------------------------
 +
-+// GPIO registers.
++// GPIOレジスタ
 +//
-+// Descriptions taken from
++// 記述は以下から採った
 +// - https://github.com/raspberrypi/documentation/files/1888662/BCM2837-ARM-Peripherals.-.Revised.-.V2-1.pdf
 +// - https://datasheets.raspberrypi.org/bcm2711/bcm2711-peripherals.pdf
 +register_bitfields! {
 +    u32,
 +
-+    /// GPIO Function Select 1
++    /// GPIO機能選択 1
 +    GPFSEL1 [
-+        /// Pin 15
++        /// ピン15
 +        FSEL15 OFFSET(15) NUMBITS(3) [
 +            Input = 0b000,
 +            Output = 0b001,
@@ -255,7 +242,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +
 +        ],
 +
-+        /// Pin 14
++        /// ピン 14
 +        FSEL14 OFFSET(12) NUMBITS(3) [
 +            Input = 0b000,
 +            Output = 0b001,
@@ -263,11 +250,11 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +        ]
 +    ],
 +
-+    /// GPIO Pull-up/down Register
++    /// GPIOプルアップ/プルダウンレジスタ
 +    ///
-+    /// BCM2837 only.
++    /// BCM2837のみ
 +    GPPUD [
-+        /// Controls the actuation of the internal pull-up/down control line to ALL the GPIO pins.
++        /// すべてのGPIOピンの内部プルアップ/プルダウンコントロールラインの動作を制御する
 +        PUD OFFSET(0) NUMBITS(2) [
 +            Off = 0b00,
 +            PullDown = 0b01,
@@ -275,34 +262,34 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +        ]
 +    ],
 +
-+    /// GPIO Pull-up/down Clock Register 0
++    /// GPIOプルアップ/プルダウンクロックレジスタ
 +    ///
-+    /// BCM2837 only.
++    /// BCM2837のみ
 +    GPPUDCLK0 [
-+        /// Pin 15
++        /// ピン 15
 +        PUDCLK15 OFFSET(15) NUMBITS(1) [
 +            NoEffect = 0,
 +            AssertClock = 1
 +        ],
 +
-+        /// Pin 14
++        /// ピン 14
 +        PUDCLK14 OFFSET(14) NUMBITS(1) [
 +            NoEffect = 0,
 +            AssertClock = 1
 +        ]
 +    ],
 +
-+    /// GPIO Pull-up / Pull-down Register 0
++    /// GPIOプルアップ/プルダウンレジスタ 0
 +    ///
-+    /// BCM2711 only.
++    /// BCM2711のみ
 +    GPIO_PUP_PDN_CNTRL_REG0 [
-+        /// Pin 15
++        /// ピン 15
 +        GPIO_PUP_PDN_CNTRL15 OFFSET(30) NUMBITS(2) [
 +            NoResistor = 0b00,
 +            PullUp = 0b01
 +        ],
 +
-+        /// Pin 14
++        /// ピン 14
 +        GPIO_PUP_PDN_CNTRL14 OFFSET(28) NUMBITS(2) [
 +            NoResistor = 0b00,
 +            PullUp = 0b01
@@ -324,54 +311,53 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +    }
 +}
 +
-+/// Abstraction for the associated MMIO registers.
++/// 対応するMMIOレジスタのための抽象化
 +type Registers = MMIODerefWrapper<RegisterBlock>;
 +
 +//--------------------------------------------------------------------------------------------------
-+// Public Definitions
++// パブリック定義
 +//--------------------------------------------------------------------------------------------------
 +
 +pub struct GPIOInner {
 +    registers: Registers,
 +}
 +
-+// Export the inner struct so that BSPs can use it for the panic handler.
++// BSPがpanicハンドラで使用できるように内部構造体をエクスポートする
 +pub use GPIOInner as PanicGPIO;
 +
-+/// Representation of the GPIO HW.
++/// GPIO HWを表す構造体
 +pub struct GPIO {
 +    inner: NullLock<GPIOInner>,
 +}
 +
 +//--------------------------------------------------------------------------------------------------
-+// Public Code
++// パブリックコード
 +//--------------------------------------------------------------------------------------------------
 +
 +impl GPIOInner {
-+    /// Create an instance.
++    /// インスタンスを作成する
 +    ///
-+    /// # Safety
++    /// # 安全性
 +    ///
-+    /// - The user must ensure to provide a correct MMIO start address.
++    /// - ユーザは正しいMMIO開始アドレスを提供する必要がある
 +    pub const unsafe fn new(mmio_start_addr: usize) -> Self {
 +        Self {
 +            registers: Registers::new(mmio_start_addr),
 +        }
 +    }
 +
-+    /// Disable pull-up/down on pins 14 and 15.
++    /// ピン14と15のプルアップ/プルダウンを無効にする
 +    #[cfg(feature = "bsp_rpi3")]
 +    fn disable_pud_14_15_bcm2837(&mut self) {
 +        use crate::cpu;
 +
-+        // Make an educated guess for a good delay value (Sequence described in the BCM2837
-+        // peripherals PDF).
++        // （BCM2837ペリフェラルのPDFに記載されているシーケンスの）適切な遅延値を
++        // 経験的に推測する。
++        //   - Wikipediaによると、最速のPi3のクロックは1.4GHz程度
++        //   - Linuxの2837 GPIOドライバは、ステップ間で1μs待つ
 +        //
-+        // - According to Wikipedia, the fastest Pi3 clocks around 1.4 GHz.
-+        // - The Linux 2837 GPIO driver waits 1 µs between the steps.
-+        //
-+        // So lets try to be on the safe side and default to 2000 cycles, which would equal 1 µs
-+        // would the CPU be clocked at 2 GHz.
++        // 安全側にふって、デフォルトを2000サイクルとする。CPUのクロックが2GHzの場合、
++        // この値は1μsに相当する。
 +        const DELAY: usize = 2000;
 +
 +        self.registers.GPPUD.write(GPPUD::PUD::Off);
@@ -386,7 +372,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +        self.registers.GPPUDCLK0.set(0);
 +    }
 +
-+    /// Disable pull-up/down on pins 14 and 15.
++    /// ピン14と15のプルアップ/プルダウンを無効にする
 +    #[cfg(feature = "bsp_rpi4")]
 +    fn disable_pud_14_15_bcm2711(&mut self) {
 +        self.registers.GPIO_PUP_PDN_CNTRL_REG0.write(
@@ -395,17 +381,17 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +        );
 +    }
 +
-+    /// Map PL011 UART as standard output.
++    /// PL011 UARTを標準アウトプットにマップする
 +    ///
-+    /// TX to pin 14
-+    /// RX to pin 15
++    /// TXをピン14に
++    /// RXをピン15に
 +    pub fn map_pl011_uart(&mut self) {
-+        // Select the UART on pins 14 and 15.
++        // ピン14と15のUARTを選択する
 +        self.registers
 +            .GPFSEL1
 +            .modify(GPFSEL1::FSEL15::AltFunc0 + GPFSEL1::FSEL14::AltFunc0);
 +
-+        // Disable pull-up/down on pins 14 and 15.
++        // ピン14と15のプルアップ/プルダウンを無効にする
 +        #[cfg(feature = "bsp_rpi3")]
 +        self.disable_pud_14_15_bcm2837();
 +
@@ -415,25 +401,25 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 +}
 +
 +impl GPIO {
-+    /// Create an instance.
++    /// インスタンスを作成する
 +    ///
-+    /// # Safety
++    /// # 安全性
 +    ///
-+    /// - The user must ensure to provide a correct MMIO start address.
++    /// - ユーザは正しいMMIO開始アドレスを提供する必要がある
 +    pub const unsafe fn new(mmio_start_addr: usize) -> Self {
 +        Self {
 +            inner: NullLock::new(GPIOInner::new(mmio_start_addr)),
 +        }
 +    }
 +
-+    /// Concurrency safe version of `GPIOInner.map_pl011_uart()`
++    /// `GPIOInner.map_pl011_uart()`の並行処理性安全バージョン
 +    pub fn map_pl011_uart(&self) {
 +        self.inner.lock(|inner| inner.map_pl011_uart())
 +    }
 +}
 +
 +//------------------------------------------------------------------------------
-+// OS Interface Code
++// OSインタフェースコード
 +//------------------------------------------------------------------------------
 +use synchronization::interface::Mutex;
 +
@@ -446,14 +432,14 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 05_drivers_g
 diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs
 --- 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs
 +++ 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs
-@@ -0,0 +1,403 @@
+@@ -0,0 +1,409 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
 +// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! PL011 UART driver.
++//! PL011 UARTドライバ
 +//!
-+//! # Resources
++//! # 参考資料
 +//!
 +//! - <https://github.com/raspberrypi/documentation/files/1888662/BCM2837-ARM-Peripherals.-.Revised.-.V2-1.pdf>
 +//! - <https://developer.arm.com/documentation/ddi0183/latest>
@@ -466,70 +452,71 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +use register::{mmio::*, register_bitfields, register_structs};
 +
 +//--------------------------------------------------------------------------------------------------
-+// Private Definitions
++// プライベート定義
 +//--------------------------------------------------------------------------------------------------
 +
-+// PL011 UART registers.
++// PL011 UARTレジスタ
 +//
-+// Descriptions taken from "PrimeCell UART (PL011) Technical Reference Manual" r1p5.
++// 記述は"PrimeCell UART (PL011) Technical Reference Manual" r1p5から採った
 +register_bitfields! {
 +    u32,
 +
-+    /// Flag Register.
++    /// フラグレジスタ
 +    FR [
-+        /// Transmit FIFO empty. The meaning of this bit depends on the state of the FEN bit in the
-+        /// Line Control Register, LCR_H.
++        /// 送信FIFOが空。このビットの意味は、ラインコントロールレジスタ
++        /// (LCR_H）のFENビットの状態に依存する。
 +        ///
-+        /// - If the FIFO is disabled, this bit is set when the transmit holding register is empty.
-+        /// - If the FIFO is enabled, the TXFE bit is set when the transmit FIFO is empty.
-+        /// - This bit does not indicate if there is data in the transmit shift register.
++        /// - FIFOが無効(FEN=0)の場合、送信ホールディングレジスタが空の時にこのビットがセットされる。
++        /// - FIFOが有効(FEN=10な場合、送信FIFOが空の時にこのビットがセットされる。
++        /// - このビットは、送信シフトレジスタにデータがあるか否かは示さない。
 +        TXFE OFFSET(7) NUMBITS(1) [],
 +
-+        /// Transmit FIFO full. The meaning of this bit depends on the state of the FEN bit in the
-+        /// LCR_H Register.
++        /// 送信FIFOが満杯。このビットの意味は、ラインコントロールレジスタ
++        /// (LCR_H）のFENビットの状態に依存する。
 +        ///
-+        /// - If the FIFO is disabled, this bit is set when the transmit holding register is full.
-+        /// - If the FIFO is enabled, the TXFF bit is set when the transmit FIFO is full.
++        /// - FIFOが無効(FEN=0)の場合、送信ホールディングレジスタが満杯の時にこのビットがセットされる。
++        /// - FIFOが有効(FEN=10な場合、送信FIFOが満杯の時にこのビットがセットされる。
 +        TXFF OFFSET(5) NUMBITS(1) [],
 +
-+        /// Receive FIFO empty. The meaning of this bit depends on the state of the FEN bit in the
-+        /// LCR_H Register.
++        /// 受信FIFOが空。このビットの意味は、ラインコントロールレジスタ
++        /// (LCR_H）のFENビットの状態に依存する。
 +        ///
-+        /// If the FIFO is disabled, this bit is set when the receive holding register is empty. If
-+        /// the FIFO is enabled, the RXFE bit is set when the receive FIFO is empty.
-+
-+        /// Receive FIFO empty. The meaning of this bit depends on the state of the FEN bit in the
-+        /// LCR_H Register.
-+        ///
-+        /// - If the FIFO is disabled, this bit is set when the receive holding register is empty.
-+        /// - If the FIFO is enabled, the RXFE bit is set when the receive FIFO is empty.
++        /// - FIFOが無効(FEN=0)の場合、受信ホールディングレジスタが空の時にこのビットがセットされる。
++        /// - FIFOが有効(FEN=10な場合、受信FIFOが空の時にこのビットがセットされる。
 +        RXFE OFFSET(4) NUMBITS(1) [],
-+
-+        /// UART busy. If this bit is set to 1, the UART is busy transmitting data. This bit remains
-+        /// set until the complete byte, including all the stop bits, has been sent from the shift
-+        /// register.
++        /// 受信FIFOが満杯。このビットの意味は、ラインコントロールレジスタ
++        /// (LCR_H）のFENビットの状態に依存する。
 +        ///
-+        /// This bit is set as soon as the transmit FIFO becomes non-empty, regardless of whether
-+        /// the UART is enabled or not.
++        /// - FIFOが無効(FEN=0)の場合、受信ホールディングレジスタが満杯の時にこのビットがセットされる。
++        /// - FIFOが有効(FEN=10な場合、受信FIFOが満杯の時にこのビットがセットされる。
++        RXFF OFFSET(6) NUMBITS(1) [],
++
++        /// UARTがビジー。このビットが1にセットされている場合、UARTはデータの
++        /// 送信中でビジーである。バイト送信が完了する（ストップビットを
++        /// すべてのビットがシフトレジスタから送信される）までこのビットは
++        /// セットされ続ける。
++        ///
++        /// 送信FIFOが空でなくなると、UARTが有効か否かにかかわらず、
++        /// 直ちにこのビットはセットされる。
 +        BUSY OFFSET(3) NUMBITS(1) []
 +    ],
 +
-+    /// Integer Baud Rate Divisor.
++    /// 通信速度整数除数レジスタ
 +    IBRD [
-+        /// The integer baud rate divisor.
++        /// 通信速度除数の整数部分
 +        BAUD_DIVINT OFFSET(0) NUMBITS(16) []
 +    ],
 +
-+    /// Fractional Baud Rate Divisor.
++    /// 通信速度小数除数レジスタ
 +    FBRD [
-+        ///  The fractional baud rate divisor.
++        ///  通信速度除数の小数部分
 +        BAUD_DIVFRAC OFFSET(0) NUMBITS(6) []
 +    ],
 +
-+    /// Line Control Register.
++    /// ラインコントロールレジスタ
 +    LCR_H [
-+        /// Word length. These bits indicate the number of data bits transmitted or received in a
-+        /// frame.
++        /// ワード長。このビットは送信または受信する1フレームのデータビット数を
++        /// 示す。
 +        WLEN OFFSET(5) NUMBITS(2) [
 +            FiveBit = 0b00,
 +            SixBit = 0b01,
@@ -537,45 +524,47 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +            EightBit = 0b11
 +        ],
 +
-+        /// Enable FIFOs:
++        /// FIFOを有効にする
 +        ///
-+        /// 0 = FIFOs are disabled (character mode) that is, the FIFOs become 1-byte-deep holding
-+        /// registers.
++        /// 0 = FIFOは無効（キャラクタモード）。FIFOは1バイトのホールディング
++        /// レジスタになる。
 +        ///
-+        /// 1 = Transmit and receive FIFO buffers are enabled (FIFO mode).
++        /// 1 = 送信/受信FIFOバッファは有効（FIFOモード）。
 +        FEN  OFFSET(4) NUMBITS(1) [
 +            FifosDisabled = 0,
 +            FifosEnabled = 1
 +        ]
 +    ],
 +
-+    /// Control Register.
++    /// コントロールレジスタ
 +    CR [
-+        /// Receive enable. If this bit is set to 1, the receive section of the UART is enabled.
-+        /// Data reception occurs for either UART signals or SIR signals depending on the setting of
-+        /// the SIREN bit. When the UART is disabled in the middle of reception, it completes the
-+        /// current character before stopping.
++        /// 受信は有効。このビットが1にセットされている場合、UARTの受信
++        /// セクションは有効である。SIRENビットの設定に応じて、UART信号
++        /// またはSIR信号のいずれかでデータの受信が行われる。受信の途中で
++        /// UARTが無効になった場合は、現在のキャラクタの受信を完了して
++        /// から停止する。
 +        RXE OFFSET(9) NUMBITS(1) [
 +            Disabled = 0,
 +            Enabled = 1
 +        ],
 +
-+        /// Transmit enable. If this bit is set to 1, the transmit section of the UART is enabled.
-+        /// Data transmission occurs for either UART signals, or SIR signals depending on the
-+        /// setting of the SIREN bit. When the UART is disabled in the middle of transmission, it
-+        /// completes the current character before stopping.
++        /// 送信は有効。このビットが1にセットされている場合、UARTの送信
++        /// セクションは有効である。SIRENビットの設定に応じて、UART信号
++        /// またはSIR信号のいずれかでデータの送信が行われる。送信の途中で
++        /// UARTが無効になった場合は、現在のキャラクタの送信を完了して
++        /// から停止する。
 +        TXE OFFSET(8) NUMBITS(1) [
 +            Disabled = 0,
 +            Enabled = 1
 +        ],
 +
-+        /// UART enable:
++        /// UARTを有効にする
 +        ///
-+        /// 0 = UART is disabled. If the UART is disabled in the middle of transmission or
-+        /// reception, it completes the current character before stopping.
++        /// 0 = UARTは無効。 送信または受信の途中でUARTが無効になった場合は、
++        /// 現在のキャラクタの送信または受信を完了してから停止する。
 +        ///
-+        /// 1 = The UART is enabled. Data transmission and reception occurs for either UART signals
-+        /// or SIR signals depending on the setting of the SIREN bit
++        /// 1 = UARTは有効。SIRENビットの設定に応じて、UART信号またはSIR信号の
++        /// いずれかでデータの送信または受信が行われる。
 +        UARTEN OFFSET(0) NUMBITS(1) [
 +            /// If the UART is disabled in the middle of transmission or reception, it completes the
 +            /// current character before stopping.
@@ -584,9 +573,9 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +        ]
 +    ],
 +
-+    /// Interrupt Clear Register.
++    /// 割り込みクリアレジスタ
 +    ICR [
-+        /// Meta field for all pending interrupts.
++        /// すべての保留中割り込みを示すメタフィールド
 +        ALL OFFSET(0) NUMBITS(11) []
 +    ]
 +}
@@ -608,7 +597,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +    }
 +}
 +
-+/// Abstraction for the associated MMIO registers.
++/// 対応するMMIOレジスタのための抽象化
 +type Registers = MMIODerefWrapper<RegisterBlock>;
 +
 +#[derive(PartialEq)]
@@ -618,7 +607,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +}
 +
 +//--------------------------------------------------------------------------------------------------
-+// Public Definitions
++// パブリック定義
 +//--------------------------------------------------------------------------------------------------
 +
 +pub struct PL011UartInner {
@@ -627,24 +616,24 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +    chars_read: usize,
 +}
 +
-+// Export the inner struct so that BSPs can use it for the panic handler.
++// BSPがpanicハンドラで使用できるように内部構造体をエクスポートする
 +pub use PL011UartInner as PanicUart;
 +
-+/// Representation of the UART.
++/// UARTを表す構造体
 +pub struct PL011Uart {
 +    inner: NullLock<PL011UartInner>,
 +}
 +
 +//--------------------------------------------------------------------------------------------------
-+// Public Code
++// パブリックコード
 +//--------------------------------------------------------------------------------------------------
 +
 +impl PL011UartInner {
-+    /// Create an instance.
++    /// インスタンスを作成する
 +    ///
-+    /// # Safety
++    /// # 安全性
 +    ///
-+    /// - The user must ensure to provide a correct MMIO start address.
++    /// - ユーザは正しいMMIO開始アドレスを提供する必要がある
 +    pub const unsafe fn new(mmio_start_addr: usize) -> Self {
 +        Self {
 +            registers: Registers::new(mmio_start_addr),
@@ -653,117 +642,120 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +        }
 +    }
 +
-+    /// Set up baud rate and characteristics.
++    /// 通信速度と特性を設定するSet up baud rate and characteristics.
 +    ///
-+    /// This results in 8N1 and 921_600 baud.
++    /// 8N1で921_600ボーと設定される。
 +    ///
-+    /// The calculation for the BRD is (we set the clock to 48 MHz in config.txt):
++    /// BRDの計算は（config.txtでクロックを48MHzと設定したので）次のようになる。
 +    /// `(48_000_000 / 16) / 921_600 = 3.2552083`.
 +    ///
-+    /// This means the integer part is `3` and goes into the `IBRD`.
-+    /// The fractional part is `0.2552083`.
++    /// これにより、整数部分は`3`になり、`IBRD`に設定し、
++    /// 小数部分は`0.2552083`となる。
 +    ///
-+    /// `FBRD` calculation according to the PL011 Technical Reference Manual:
++    /// `FBRD`はPL011テクニカルリファレンスマニュアルにしたがって計算すると
++    /// 次のようになる。
 +    /// `INTEGER((0.2552083 * 64) + 0.5) = 16`.
 +    ///
-+    /// Therefore, the generated baud rate divider is: `3 + 16/64 = 3.25`. Which results in a
-+    /// genrated baud rate of `48_000_000 / (16 * 3.25) = 923_077`.
++    /// したがって、生成される通信速度除数は`3 + 16/64 = 3.25`である。
++    /// これにより生成される通信速は`48_000_000 / (16 * 3.25) = 923_077`となる。
 +    ///
-+    /// Error = `((923_077 - 921_600) / 921_600) * 100 = 0.16modulo`.
++    /// エラー = `((923_077 - 921_600) / 921_600) * 100 = 0.16%`である。
 +    pub fn init(&mut self) {
-+        // Execution can arrive here while there are still characters queued in the TX FIFO and
-+        // actively being sent out by the UART hardware. If the UART is turned off in this case,
-+        // those queued characters would be lost.
++        // TX FIFOにまだ文字がキューイングされており、UARTハードウェアが
++        // アクティブに送信している時に実行がここに到着する可能性がある。
++        // この場合にUARTがオフになると、キューに入っていた文字が失われる。
 +        //
-+        // For example, this can happen during runtime on a call to panic!(), because panic!()
-+        // initializes its own UART instance and calls init().
++        // たとえば、実行中にpanic!()が呼び出された時にこのような事態が
++        // 発生する可能性がある。panic!()が自身のUARTインスタンスを初期化して
++        // init()を呼び出すからである。
 +        //
-+        // Hence, flush first to ensure all pending characters are transmitted.
++        // そのため、保留中の文字がすべて送信されるように最初にフラッシュする。
 +        self.flush();
 +
-+        // Turn the UART off temporarily.
++        // 一時的にUARTを無効にする
 +        self.registers.CR.set(0);
 +
-+        // Clear all pending interrupts.
++        // すべての保留中の割り込みをクリアする
 +        self.registers.ICR.write(ICR::ALL::CLEAR);
 +
-+        // From the PL011 Technical Reference Manual:
++        // PL011テクニカルリファレンスマニュアルから:
 +        //
-+        // The LCR_H, IBRD, and FBRD registers form the single 30-bit wide LCR Register that is
-+        // updated on a single write strobe generated by a LCR_H write. So, to internally update the
-+        // contents of IBRD or FBRD, a LCR_H write must always be performed at the end.
++        // LCR_H、IBRD、FBRDの各レジスタは、LCR_Hの書き込みにより生成される
++        // 1回の書き込みストローブで更新される30ビット幅のLCRレジスタを形成
++        // する。そのため、IBRDやFBRDの内容を内部的に更新するには、常に
++        // LCR_Hの書き込みを最後に行う必要がある。
 +        //
-+        // Set the baud rate, 8N1 and FIFO enabled.
++        // 通信速度と8N1を設定し、FIFOを有効にする。
 +        self.registers.IBRD.write(IBRD::BAUD_DIVINT.val(3));
 +        self.registers.FBRD.write(FBRD::BAUD_DIVFRAC.val(16));
 +        self.registers
 +            .LCR_H
 +            .write(LCR_H::WLEN::EightBit + LCR_H::FEN::FifosEnabled);
 +
-+        // Turn the UART on.
++        // UARTを有効にする。
 +        self.registers
 +            .CR
 +            .write(CR::UARTEN::Enabled + CR::TXE::Enabled + CR::RXE::Enabled);
 +    }
 +
-+    /// Send a character.
++    /// 1文字送信する
 +    fn write_char(&mut self, c: char) {
-+        // Spin while TX FIFO full is set, waiting for an empty slot.
++        // スロットが開くのを待って、TX FIFOフルが設定されている間、スピンする。
 +        while self.registers.FR.matches_all(FR::TXFF::SET) {
 +            cpu::nop();
 +        }
 +
-+        // Write the character to the buffer.
++        // 文字をバッファに書き込む
 +        self.registers.DR.set(c as u32);
 +
 +        self.chars_written += 1;
 +    }
 +
-+    /// Block execution until the last buffered character has been physically put on the TX wire.
++    /// バッファされた最後の文字が物理的にTXワイヤに置かれるまで実行をブロックする
 +    fn flush(&self) {
-+        // Spin until the busy bit is cleared.
++        // ビジービットがクリアされるまでスピンする
 +        while self.registers.FR.matches_all(FR::BUSY::SET) {
 +            cpu::nop();
 +        }
 +    }
 +
-+    /// Retrieve a character.
++    /// 1文字受信する
 +    fn read_char_converting(&mut self, blocking_mode: BlockingMode) -> Option<char> {
-+        // If RX FIFO is empty,
++        // RX FIFOがからの場合
 +        if self.registers.FR.matches_all(FR::RXFE::SET) {
-+            // immediately return in non-blocking mode.
++            // ノンブロッキングモードの場合はすぐにリターンする
 +            if blocking_mode == BlockingMode::NonBlocking {
 +                return None;
 +            }
 +
-+            // Otherwise, wait until a char was received.
++            // そうでなければ、1文字受信されるまで待つ
 +            while self.registers.FR.matches_all(FR::RXFE::SET) {
 +                cpu::nop();
 +            }
 +        }
 +
-+        // Read one character.
++        // 1文字読み込む
 +        let mut ret = self.registers.DR.get() as u8 as char;
 +
-+        // Convert carrige return to newline.
++        // 復帰を改行に変換する
 +        if ret == '\r' {
 +            ret = '\n'
 +        }
 +
-+        // Update statistics.
++        // 統計を更新する
 +        self.chars_read += 1;
 +
 +        Some(ret)
 +    }
 +}
 +
-+/// Implementing `core::fmt::Write` enables usage of the `format_args!` macros, which in turn are
-+/// used to implement the `kernel`'s `print!` and `println!` macros. By implementing `write_str()`,
-+/// we get `write_fmt()` automatically.
++/// `core::fmt::Write`を実装すると`format_args!`マクロが利用可能になる。これはひいては
++/// `カーネル`の`print!`と`println!`マクロを実装することになる。`write_str()`を実装する
++/// ことにより自動的に`write_fmt()`を手にすることができる。
 +///
-+/// The function takes an `&mut self`, so it must be implemented for the inner struct.
++/// この関数は `&mut self` を取るので、内部構造体を実装する必要がある
 +///
-+/// See [`src/print.rs`].
++/// [`src/print.rs`]を参照
 +///
 +/// [`src/print.rs`]: ../../print/index.html
 +impl fmt::Write for PL011UartInner {
@@ -777,11 +769,11 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +}
 +
 +impl PL011Uart {
-+    /// Create an instance.
++    /// インスタンスを作成する
 +    ///
 +    /// # Safety
 +    ///
-+    /// - The user must ensure to provide a correct MMIO start address.
++    /// - ユーザは正しいMMIO開始アドレスを提供する必要がある
 +    pub const unsafe fn new(mmio_start_addr: usize) -> Self {
 +        Self {
 +            inner: NullLock::new(PL011UartInner::new(mmio_start_addr)),
@@ -790,7 +782,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +}
 +
 +//------------------------------------------------------------------------------
-+// OS Interface Code
++// OSインタフェースコード
 +//------------------------------------------------------------------------------
 +use synchronization::interface::Mutex;
 +
@@ -807,20 +799,20 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +}
 +
 +impl console::interface::Write for PL011Uart {
-+    /// Passthrough of `args` to the `core::fmt::Write` implementation, but guarded by a Mutex to
-+    /// serialize access.
++    /// `core::fmt::Write`の実装に`args`をそのまま渡すが、ミューテックスで
++    /// ガードしてアクセスをシリアライズしている
 +    fn write_char(&self, c: char) {
 +        self.inner.lock(|inner| inner.write_char(c));
 +    }
 +
 +    fn write_fmt(&self, args: core::fmt::Arguments) -> fmt::Result {
-+        // Fully qualified syntax for the call to `core::fmt::Write::write:fmt()` to increase
-+        // readability.
++        // 可読性を高めるために`core::fmt::Write::write:fmt()`の
++        // 呼び出しに完全修飾構文を採用
 +        self.inner.lock(|inner| fmt::Write::write_fmt(inner, args))
 +    }
 +
 +    fn flush(&self) {
-+        // Spin until TX FIFO empty is set.
++        // TX FIFOが空になるまでスピンする
 +        self.inner.lock(|inner| inner.flush());
 +    }
 +}
@@ -832,7 +824,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 05_dri
 +    }
 +
 +    fn clear_rx(&self) {
-+        // Read from the RX FIFO until it is indicating empty.
++        // 空になるまでRX FIFOを読み込む
 +        while self
 +            .inner
 +            .lock(|inner| inner.read_char_converting(BlockingMode::NonBlocking))
@@ -859,7 +851,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/bcm.rs 05_drivers_gpio_uart/src/
 +//
 +// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! BCM driver top level.
++//! BCM ドライバのトップレベル
 +
 +mod bcm2xxx_gpio;
 +mod bcm2xxx_pl011_uart;
@@ -875,12 +867,12 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/common.rs 05_drivers_gpio_uart/s
 +//
 +// Copyright (c) 2020-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! Common device driver code.
++//! 共通デバイスドライバコード
 +
 +use core::{marker::PhantomData, ops};
 +
 +//--------------------------------------------------------------------------------------------------
-+// Public Definitions
++// パブリック定義
 +//--------------------------------------------------------------------------------------------------
 +
 +pub struct MMIODerefWrapper<T> {
@@ -889,11 +881,11 @@ diff -uNr 04_safe_globals/src/bsp/device_driver/common.rs 05_drivers_gpio_uart/s
 +}
 +
 +//--------------------------------------------------------------------------------------------------
-+// Public Code
++// パブリックコード
 +//--------------------------------------------------------------------------------------------------
 +
 +impl<T> MMIODerefWrapper<T> {
-+    /// Create an instance.
++    /// インスタンスを作成する
 +    pub const unsafe fn new(start_addr: usize) -> Self {
 +        Self {
 +            start_addr,
@@ -918,7 +910,7 @@ diff -uNr 04_safe_globals/src/bsp/device_driver.rs 05_drivers_gpio_uart/src/bsp/
 +//
 +// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! Device driver.
++//! デバイスドライバ
 +
 +#[cfg(any(feature = "bsp_rpi3", feature = "bsp_rpi4"))]
 +mod bcm;
@@ -932,7 +924,7 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/console.rs 05_drivers_gpio_uart/sr
 +++ 05_drivers_gpio_uart/src/bsp/raspberrypi/console.rs
 @@ -4,113 +4,34 @@
 
- //! BSP console facilities.
+ //! BSPコンソール装置
 
 -use crate::{console, synchronization, synchronization::NullLock};
 +use super::memory;
@@ -940,36 +932,33 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/console.rs 05_drivers_gpio_uart/sr
  use core::fmt;
 
  //--------------------------------------------------------------------------------------------------
--// Private Definitions
-+// Public Code
- //--------------------------------------------------------------------------------------------------
-
--/// A mystical, magical device for generating QEMU output out of the void.
-+/// In case of a panic, the panic handler uses this function to take a last shot at printing
-+/// something before the system is halted.
- ///
--/// The mutex protected part.
+-// プライベート定義
+-//--------------------------------------------------------------------------------------------------
+-
+-/// QEMUの出力を無から生成する神秘的で魔法のような装置
+-///
+-/// mutexで保護される部分.
 -struct QEMUOutputInner {
 -    chars_written: usize,
 -}
 -
 -//--------------------------------------------------------------------------------------------------
--// Public Definitions
--//--------------------------------------------------------------------------------------------------
--
--/// The main struct.
+ // パブリックコード
+ //--------------------------------------------------------------------------------------------------
+
+-/// メイン構造体
 -pub struct QEMUOutput {
 -    inner: NullLock<QEMUOutputInner>,
 -}
 -
 -//--------------------------------------------------------------------------------------------------
--// Global instances
+-// グローバルインスタンス
 -//--------------------------------------------------------------------------------------------------
 -
 -static QEMU_OUTPUT: QEMUOutput = QEMUOutput::new();
 -
 -//--------------------------------------------------------------------------------------------------
--// Private Code
+-// プライベートコード
 -//--------------------------------------------------------------------------------------------------
 -
 -impl QEMUOutputInner {
@@ -977,7 +966,7 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/console.rs 05_drivers_gpio_uart/sr
 -        QEMUOutputInner { chars_written: 0 }
 -    }
 -
--    /// Send a character.
+-    /// 1文字送信
 -    fn write_char(&mut self, c: char) {
 -        unsafe {
 -            core::ptr::write_volatile(0x3F20_1000 as *mut u8, c as u8);
@@ -987,23 +976,25 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/console.rs 05_drivers_gpio_uart/sr
 -    }
 -}
 -
--/// Implementing `core::fmt::Write` enables usage of the `format_args!` macros, which in turn are
--/// used to implement the `kernel`'s `print!` and `println!` macros. By implementing `write_str()`,
--/// we get `write_fmt()` automatically.
-+/// We try to init panic-versions of the GPIO and the UART. The panic versions are not protected
-+/// with synchronization primitives, which increases chances that we get to print something, even
-+/// when the kernel's default GPIO or UART instances happen to be locked at the time of the panic.
+-/// `core::fmt::Write`を実装すると`format_args!`マクロが利用可能になる。これはひいては
+-/// `カーネル`の`print!`と`println!`マクロを実装することになる。`write_str()`を実装する
+-/// ことにより自動的に`write_fmt()`を手にすることができる。
++/// パニックが発生した場合、パニックハンドラはこの関数を使用してシステムが停止する前に
++/// 何かをプリントするという最後の手段をとる。
  ///
--/// The function takes an `&mut self`, so it must be implemented for the inner struct.
-+/// # Safety
+-/// この関数は `&mut self` を取るので、内部構造体を実装する必要がある
++/// GPIOとUARTのパニックバージョンの初期化を試みる。パニックバージョンは同期プリミティブで
++/// 保護されていないため、パニック発生時にカーネルデフォルトのGPIOやUARTインスタンスが
++/// たまたまロックされていても何かをプリントできる可能性は大きい。
  ///
--/// See [`src/print.rs`].
--///
+-/// [`src/print.rs`]を参照
++/// # 安全性
+ ///
 -/// [`src/print.rs`]: ../../print/index.html
 -impl fmt::Write for QEMUOutputInner {
 -    fn write_str(&mut self, s: &str) -> fmt::Result {
 -        for c in s.chars() {
--            // Convert newline to carrige return + newline.
+-            // 改行を復帰+改行に変換する
 -            if c == '\n' {
 -                self.write_char('\r')
 -            }
@@ -1016,17 +1007,17 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/console.rs 05_drivers_gpio_uart/sr
 -}
 -
 -//--------------------------------------------------------------------------------------------------
--// Public Code
+-// パブリックコード
 -//--------------------------------------------------------------------------------------------------
 -
 -impl QEMUOutput {
--    /// Create a new instance.
+-    /// 新しいインスタンスを作成する
 -    pub const fn new() -> QEMUOutput {
 -        QEMUOutput {
 -            inner: NullLock::new(QEMUOutputInner::new()),
 -        }
 -    }
-+/// - Use only for printing during a panic.
++/// - パニック時のプリントにのみ使用する
 +pub unsafe fn panic_console_out() -> impl fmt::Write {
 +    let mut panic_gpio = device_driver::PanicGPIO::new(memory::map::mmio::GPIO_START);
 +    let mut panic_uart = device_driver::PanicUart::new(memory::map::mmio::PL011_UART_START);
@@ -1036,22 +1027,22 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/console.rs 05_drivers_gpio_uart/sr
 +    panic_uart
  }
 
- /// Return a reference to the console.
+ /// コンソールへの参照を返す
  pub fn console() -> &'static impl console::interface::All {
 -    &QEMU_OUTPUT
 -}
 -
 -//------------------------------------------------------------------------------
--// OS Interface Code
+-// OSインタフェースコード
 -//------------------------------------------------------------------------------
 -use synchronization::interface::Mutex;
 -
--/// Passthrough of `args` to the `core::fmt::Write` implementation, but guarded by a Mutex to
--/// serialize access.
+-/// `core::fmt::Write`の実装に`args`をそのまま渡すが、ミューテックスで
+-/// ガードしてアクセスをシリアライズしている
 -impl console::interface::Write for QEMUOutput {
 -    fn write_fmt(&self, args: core::fmt::Arguments) -> fmt::Result {
--        // Fully qualified syntax for the call to `core::fmt::Write::write:fmt()` to increase
--        // readability.
+-        // 可読性を高めるために`core::fmt::Write::write:fmt()`の
+-        // 呼び出しに完全修飾構文を採用
 -        self.inner.lock(|inner| fmt::Write::write_fmt(inner, args))
 -    }
 -}
@@ -1071,21 +1062,21 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/driver.rs 05_drivers_gpio_uart/src
 +//
 +// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! BSP driver support.
++//! BSPドライバサポート
 +
 +use crate::driver;
 +
 +//--------------------------------------------------------------------------------------------------
-+// Private Definitions
++// プライベート定義
 +//--------------------------------------------------------------------------------------------------
 +
-+/// Device Driver Manager type.
++/// デバイスドライバマネージャ型
 +struct BSPDriverManager {
 +    device_drivers: [&'static (dyn DeviceDriver + Sync); 2],
 +}
 +
 +//--------------------------------------------------------------------------------------------------
-+// Global instances
++// グローバルインスンタンス
 +//--------------------------------------------------------------------------------------------------
 +
 +static BSP_DRIVER_MANAGER: BSPDriverManager = BSPDriverManager {
@@ -1093,16 +1084,16 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/driver.rs 05_drivers_gpio_uart/src
 +};
 +
 +//--------------------------------------------------------------------------------------------------
-+// Public Code
++// パブリックコード
 +//--------------------------------------------------------------------------------------------------
 +
-+/// Return a reference to the driver manager.
++/// ドライバマネージャへの参照を返す
 +pub fn driver_manager() -> &'static impl driver::interface::DriverManager {
 +    &BSP_DRIVER_MANAGER
 +}
 +
 +//------------------------------------------------------------------------------
-+// OS Interface Code
++// OSインタフェースコード
 +//------------------------------------------------------------------------------
 +use driver::interface::DeviceDriver;
 +
@@ -1112,7 +1103,7 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/driver.rs 05_drivers_gpio_uart/src
 +    }
 +
 +    fn post_device_driver_init(&self) {
-+        // Configure PL011Uart's output pins.
++        // PL011Uartの出力ピンを構成する
 +        super::GPIO.map_pl011_uart();
 +    }
 +}
@@ -1124,17 +1115,17 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/memory.rs 05_drivers_gpio_uart/src
  }
 
  //--------------------------------------------------------------------------------------------------
-+// Public Definitions
++// パブリック定義
 +//--------------------------------------------------------------------------------------------------
 +
-+/// The board's physical memory map.
++/// ボードの物理メモリアドレス
 +#[rustfmt::skip]
 +pub(super) mod map {
 +
 +    pub const GPIO_OFFSET:         usize = 0x0020_0000;
 +    pub const UART_OFFSET:         usize = 0x0020_1000;
 +
-+    /// Physical devices.
++    /// 物理デバイス
 +    #[cfg(feature = "bsp_rpi3")]
 +    pub mod mmio {
 +        use super::*;
@@ -1144,7 +1135,7 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/memory.rs 05_drivers_gpio_uart/src
 +        pub const PL011_UART_START: usize = START + UART_OFFSET;
 +    }
 +
-+    /// Physical devices.
++    /// 物理デバイス
 +    #[cfg(feature = "bsp_rpi4")]
 +    pub mod mmio {
 +        use super::*;
@@ -1156,7 +1147,7 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi/memory.rs 05_drivers_gpio_uart/src
 +}
 +
 +//--------------------------------------------------------------------------------------------------
- // Public Code
+ // パブリックコード
  //--------------------------------------------------------------------------------------------------
 
 
@@ -1171,7 +1162,7 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi.rs 05_drivers_gpio_uart/src/bsp/ra
  pub mod memory;
 +
 +//--------------------------------------------------------------------------------------------------
-+// Global instances
++// グローバルインスタンス
 +//--------------------------------------------------------------------------------------------------
 +use super::device_driver;
 +
@@ -1182,10 +1173,10 @@ diff -uNr 04_safe_globals/src/bsp/raspberrypi.rs 05_drivers_gpio_uart/src/bsp/ra
 +    unsafe { device_driver::PL011Uart::new(memory::map::mmio::PL011_UART_START) };
 +
 +//--------------------------------------------------------------------------------------------------
-+// Public Code
++// パブリックコード
 +//--------------------------------------------------------------------------------------------------
 +
-+/// Board identification.
++/// ボード識別
 +pub fn board_name() -> &'static str {
 +    #[cfg(feature = "bsp_rpi3")]
 +    {
@@ -1203,7 +1194,7 @@ diff -uNr 04_safe_globals/src/bsp.rs 05_drivers_gpio_uart/src/bsp.rs
 +++ 05_drivers_gpio_uart/src/bsp.rs
 @@ -4,6 +4,8 @@
 
- //! Conditional reexporting of Board Support Packages.
+ //! ボードサポートパッケージの条件再エクスポート
 
 +mod device_driver;
 +
@@ -1214,44 +1205,49 @@ diff -uNr 04_safe_globals/src/bsp.rs 05_drivers_gpio_uart/src/bsp.rs
 diff -uNr 04_safe_globals/src/console.rs 05_drivers_gpio_uart/src/console.rs
 --- 04_safe_globals/src/console.rs
 +++ 05_drivers_gpio_uart/src/console.rs
-@@ -14,8 +14,25 @@
+@@ -12,20 +12,42 @@
+ pub mod interface {
+     use core::fmt;
 
-     /// Console write functions.
+-    /// コンソール write関数
++    /// コンソールwrite関数
      pub trait Write {
-+        /// Write a single character.
++        /// 1文字Write
 +        fn write_char(&self, c: char);
 +
-         /// Write a Rust format string.
+         /// Rust形式の文字列をWrite
          fn write_fmt(&self, args: fmt::Arguments) -> fmt::Result;
 +
-+        /// Block until the last buffered character has been physically put on the TX wire.
++        /// バッファされた最後の文字が物理的にTXワイヤに置かれるまでブロックする
 +        fn flush(&self);
 +    }
 +
-+    /// Console read functions.
++    /// コンソールread関数
 +    pub trait Read {
-+        /// Read a single character.
++        /// 1文字Read
 +        fn read_char(&self) -> char {
 +            ' '
 +        }
 +
-+        /// Clear RX buffers, if any.
++        /// もしあれば、RXバッファをクリアする
 +        fn clear_rx(&self);
      }
 
-     /// Console statistics.
-@@ -24,8 +41,13 @@
+     /// コンソール統計
+     pub trait Statistics {
+-        /// 書き込んだ文字数を返す
++        /// 書き出した文字数を返す
          fn chars_written(&self) -> usize {
              0
          }
 +
-+        /// Return the number of characters read.
++        /// 読み込んだ文字数を返す
 +        fn chars_read(&self) -> usize {
 +            0
 +        }
      }
 
-     /// Trait alias for a full-fledged console.
+     /// 本格的コンソール用のトレイトエイリアス
 -    pub trait All = Write + Statistics;
 +    pub trait All = Write + Read + Statistics;
  }
@@ -1261,7 +1257,7 @@ diff -uNr 04_safe_globals/src/cpu.rs 05_drivers_gpio_uart/src/cpu.rs
 +++ 05_drivers_gpio_uart/src/cpu.rs
 @@ -13,4 +13,7 @@
  //--------------------------------------------------------------------------------------------------
- // Architectural Public Reexports
+ // アーキテクチャのパブリック再エクスポート
  //--------------------------------------------------------------------------------------------------
 -pub use arch_cpu::wait_forever;
 +pub use arch_cpu::{nop, wait_forever};
@@ -1277,43 +1273,43 @@ diff -uNr 04_safe_globals/src/driver.rs 05_drivers_gpio_uart/src/driver.rs
 +//
 +// Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! Driver support.
++//! ドライバサポート
 +
 +//--------------------------------------------------------------------------------------------------
-+// Public Definitions
++// パブリック定義
 +//--------------------------------------------------------------------------------------------------
 +
-+/// Driver interfaces.
++/// ドライバインタフェース.
 +pub mod interface {
-+    /// Device Driver functions.
++    /// デバイスドライバ関数
 +    pub trait DeviceDriver {
-+        /// Return a compatibility string for identifying the driver.
++        /// ドライバを識別するための互換性文字列を返す
 +        fn compatible(&self) -> &'static str;
 +
-+        /// Called by the kernel to bring up the device.
++        /// デバイスを起動するためにカーネルから呼び出される
 +        ///
-+        /// # Safety
++        /// # 安全性
 +        ///
-+        /// - During init, drivers might do stuff with system-wide impact.
++        /// - initの間にドライバがシステム全体に影響を与えることをする可能性がある
 +        unsafe fn init(&self) -> Result<(), &'static str> {
 +            Ok(())
 +        }
 +    }
 +
-+    /// Device driver management functions.
++    /// デバイスドライバ管理関数
 +    ///
-+    /// The `BSP` is supposed to supply one global instance.
++    /// `BSP`はグローバルインスタンスを一つ提供することが想定されている.
 +    pub trait DriverManager {
-+        /// Return a slice of references to all `BSP`-instantiated drivers.
++        /// `BSP`がインスタンス化したすべてのドライバへの参照のスライスを返す
 +        ///
-+        /// # Safety
++        /// # 安全性
 +        ///
-+        /// - The order of devices is the order in which `DeviceDriver::init()` is called.
++        /// - デバイスの順番はその`DeviceDriver::init()`が呼び出された順番
 +        fn all_device_drivers(&self) -> &[&'static (dyn DeviceDriver + Sync)];
 +
-+        /// Initialization code that runs after driver init.
++        /// ドライバのinit後に実行される初期化コード
 +        ///
-+        /// For example, device driver code that depends on other drivers already being online.
++        /// たとえば、すでにオンラインになっている他のドライバに依存するデバイスドライバのコード.
 +        fn post_device_driver_init(&self);
 +    }
 +}
@@ -1321,7 +1317,7 @@ diff -uNr 04_safe_globals/src/driver.rs 05_drivers_gpio_uart/src/driver.rs
 diff -uNr 04_safe_globals/src/main.rs 05_drivers_gpio_uart/src/main.rs
 --- 04_safe_globals/src/main.rs
 +++ 05_drivers_gpio_uart/src/main.rs
-@@ -106,6 +106,8 @@
+@ -106,6 +106,8 @@
  //!
  //! [`runtime_init::runtime_init()`]: runtime_init/fn.runtime_init.html
 
@@ -1339,10 +1335,10 @@ diff -uNr 04_safe_globals/src/main.rs 05_drivers_gpio_uart/src/main.rs
  mod panic_wait;
  mod print;
 @@ -127,16 +130,54 @@
- /// # Safety
+ /// # 安全性
  ///
- /// - Only a single core must be active and running this function.
-+/// - The init calls in this function must appear in the correct order.
+ /// - アクティブなコアはこの関数を実行しているコアだけでなければならない
++/// - この関数内のinitコールは正しい順番でなければならない
  unsafe fn kernel_init() -> ! {
 -    use console::interface::Statistics;
 +    use driver::interface::DriverManager;
@@ -1354,13 +1350,13 @@ diff -uNr 04_safe_globals/src/main.rs 05_drivers_gpio_uart/src/main.rs
 +        }
 +    }
 +    bsp::driver::driver_manager().post_device_driver_init();
-+    // println! is usable from here on.
++    // println!はここから利用可能
 +
-+    // Transition from unsafe to safe.
++    // unsafeからsafeに移行
 +    kernel_main()
 +}
 +
-+/// The main function running after the early init.
++/// 最初の初期化後に実行するメイン関数
 +fn kernel_main() -> ! {
 +    use bsp::console::console;
 +    use console::interface::All;
@@ -1391,7 +1387,7 @@ diff -uNr 04_safe_globals/src/main.rs 05_drivers_gpio_uart/src/main.rs
 
 -    println!("[2] Stopping here.");
 -    cpu::wait_forever()
-+    // Discard any spurious received characters before going into echo mode.
++    // エコーモードに移行する前に受信したスプリアス文字を破棄する
 +    console().clear_rx();
 +    loop {
 +        let c = bsp::console::console().read_char();
@@ -1402,9 +1398,12 @@ diff -uNr 04_safe_globals/src/main.rs 05_drivers_gpio_uart/src/main.rs
 diff -uNr 04_safe_globals/src/panic_wait.rs 05_drivers_gpio_uart/src/panic_wait.rs
 --- 04_safe_globals/src/panic_wait.rs
 +++ 05_drivers_gpio_uart/src/panic_wait.rs
-@@ -4,15 +4,35 @@
+@@ -2,17 +2,37 @@
+ //
+ // Copyright (c) 2018-2021 Andre Richter <andre.o.richter@gmail.com>
 
- //! A panic handler that infinitely waits.
+-//! 永久に待ち続けるパニックハンドラ
++//! A panic handler that infinitely waits.
 
 -use crate::{cpu, println};
 -use core::panic::PanicInfo;
@@ -1442,5 +1441,4 @@ diff -uNr 04_safe_globals/src/panic_wait.rs 05_drivers_gpio_uart/src/panic_wait.
      }
 
      cpu::wait_forever()
-
 ```

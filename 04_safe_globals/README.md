@@ -1,49 +1,47 @@
-# チュートリアル 04 - 安全なグローバル
+# Tutorial 04 - Safe Globals
 
 ## tl;dr
 
-- 疑似ロックを導入します。
-- 擬似ロックはOSの同期プリミティブの最初のショーケースであり、グローバルなデータ構造への安全なアクセスを可能にします。
+- A pseudo-lock is introduced.
+- It is a first showcase of OS synchronization primitives and enables safe access to a global data
+  structure.
 
-## Rustにおけるミュータブルなグローバル
+## Mutable globals in Rust
 
-[チュートリアル 03]でグローバルに使用可能な`print!`マクロを導入した際、少しずるを
-しました。`core::fmt`の`write_fmt()`関数は`&mut self`を受け取りますが、これが
-動作したのは、呼び出すごとに`QEMUOutput`の新しいインスタンスを生成していたから
-です。
+When we introduced the globally usable `print!` macros in [tutorial 03], we cheated a bit. Calling
+`core::fmt`'s `write_fmt()` function, which takes an `&mut self`, was only working because on each
+call, a new instance of `QEMUOutput` was created.
 
-書き込んだ文字数の統計など、何らかの状態を保持したい場合、`QEMUOutput`の
-グローバルインスタンスを一つ作成する必要があります（Rustでは`static`キーワードを
-使用します）。
+If we would want to preserve some state, e.g. statistics about the number of characters written, we
+need to make a single global instance of `QEMUOutput` (in Rust, using the `static` keyword).
 
-しかし、`static QEMU_OUTPUT`は`&mut self`を取る関数を呼び出すことができません。
-そのためには`static mut`が必要です。しかし、`static mut`で状態を変更する関数を
-呼び出すことは安全ではありません。Rustコンパイラにおけるその理由は、複数の
-コアやスレッドがデータを同時に変異することを防ぐことができないからです
-（グローバルなので誰でもどこからでも参照できます。ここでは借用チェッカーは
-役に立ちません）。
+A `static QEMU_OUTPUT`, however, would not allow to call functions taking `&mut self`. For that, we
+would need a `static mut`, but calling functions that mutate state on `static mut`s is unsafe. The
+Rust compiler's reasoning for this is that it can then not prevent anymore that multiple
+cores/threads are mutating the data concurrently (it is a global, so everyone can reference it from
+anywhere. The borrow checker can't help here).
 
-この問題を解決するにはグローバルを同期プリミティブでラップすればよいです。
-ここでは、*MUTual EXclusion*プリミティブの一つを使います。`Mutex`は
-`synchronization.rs`でトレイトとして導入され、同じファイルで`NullLock`に
-よって実装されています。教育用に簡潔なコードにするため、同時アクセスを保護
-するためのアーキテクチャ固有の実際的なロジックは省いています。カーネルが
-シングルコアで割り込みを無効にして実行している限り、これは必要ないからです。
+The solution to this problem is to wrap the global into a synchronization primitive. In our case, a
+variant of a *MUTual EXclusion* primitive. `Mutex` is introduced as a trait in `synchronization.rs`,
+and implemented by the `NullLock` in the same file. In order to make the code lean for teaching
+purposes, it leaves out the actual architecture-specific logic for protection against concurrent
+access, since we don't need it as long as the kernel only executes on a single core with interrupts
+disabled.
 
-`NullLock`はRustの中心コンセプトである内部可変性を紹介することに重点を
-置いています。[この文書]を読んでみてください。また、Rustの参照型の正確な
-メンタルモデルについては、[こちらの文書]を読むことをおすすめします。
+The `NullLock` focuses on showcasing the Rust core concept of [interior mutability]. Make sure to
+read up on it. I also recommend to read this article about an [accurate mental model for Rust's
+reference types].
 
-`NullLock`とその他の実在するmutexの実装を比較したい場合は、[spin]クレイトや
-[parking lot]クレイトの実装をチェックしてください。
+If you want to compare the `NullLock` to some real-world mutex implementations, you can check out
+implemntations in the [spin crate] or the [parking lot crate].
 
-[チュートリアル 03]: ../03_hacky_hello_world
-[この文書]: https://doc.rust-lang.org/std/cell/index.html
-[こちらの文書]: https://docs.rs/dtolnay/0.0.6/dtolnay/macro._02__reference_types.html
-[spin]: https://github.com/mvdnes/spin-rs
-[parking lot]: https://github.com/Amanieu/parking_lot
+[tutorial 03]: ../03_hacky_hello_world
+[interior mutability]: https://doc.rust-lang.org/std/cell/index.html
+[accurate mental model for Rust's reference types]: https://docs.rs/dtolnay/0.0.6/dtolnay/macro._02__reference_types.html
+[spin crate]: https://github.com/mvdnes/spin-rs
+[parking lot crate]: https://github.com/Amanieu/parking_lot
 
-## テスト
+## Test it
 
 ```console
 $ make qemu
@@ -54,7 +52,7 @@ $ make qemu
 [2] Stopping here.
 ```
 
-## 前チュートリアルとのdiff
+## Diff to previous
 ```diff
 
 diff -uNr 03_hacky_hello_world/Cargo.toml 04_safe_globals/Cargo.toml
@@ -74,7 +72,7 @@ diff -uNr 03_hacky_hello_world/src/bsp/raspberrypi/console.rs 04_safe_globals/sr
 +++ 04_safe_globals/src/bsp/raspberrypi/console.rs
 @@ -4,7 +4,7 @@
 
- //! BSPコンソール装置
+ //! BSP console facilities.
 
 -use crate::console;
 +use crate::{console, synchronization, synchronization::NullLock};
@@ -84,40 +82,39 @@ diff -uNr 03_hacky_hello_world/src/bsp/raspberrypi/console.rs 04_safe_globals/sr
 @@ -12,25 +12,64 @@
  //--------------------------------------------------------------------------------------------------
 
- /// QEMUの出力を無から生成する神秘的で魔法のような装置
+ /// A mystical, magical device for generating QEMU output out of the void.
 -struct QEMUOutput;
 +///
-+/// mutexで保護される部分.
++/// The mutex protected part.
 +struct QEMUOutputInner {
 +    chars_written: usize,
 +}
-
- //--------------------------------------------------------------------------------------------------
--// プライベート定義
-+// パブリックコード
++
++//--------------------------------------------------------------------------------------------------
++// Public Definitions
 +//--------------------------------------------------------------------------------------------------
 +
-+/// メイン構造体
++/// The main struct.
 +pub struct QEMUOutput {
 +    inner: NullLock<QEMUOutputInner>,
 +}
 +
- //--------------------------------------------------------------------------------------------------
-+// グローバルインスタンス
++//--------------------------------------------------------------------------------------------------
++// Global instances
 +//--------------------------------------------------------------------------------------------------
 +
 +static QEMU_OUTPUT: QEMUOutput = QEMUOutput::new();
-+
-+//--------------------------------------------------------------------------------------------------
-+// プライベートコード
-+//--------------------------------------------------------------------------------------------------
-+
+
+ //--------------------------------------------------------------------------------------------------
+ // Private Code
+ //--------------------------------------------------------------------------------------------------
+
 +impl QEMUOutputInner {
 +    const fn new() -> QEMUOutputInner {
 +        QEMUOutputInner { chars_written: 0 }
 +    }
 +
-+    /// 1文字送信
++    /// Send a character.
 +    fn write_char(&mut self, c: char) {
 +        unsafe {
 +            core::ptr::write_volatile(0x3F20_1000 as *mut u8, c as u8);
@@ -126,14 +123,14 @@ diff -uNr 03_hacky_hello_world/src/bsp/raspberrypi/console.rs 04_safe_globals/sr
 +        self.chars_written += 1;
 +    }
 +}
-
- /// `core::fmt::Write`を実装すると`format_args!`マクロが利用可能になる。これはひいては
- /// `カーネル`の`print!`と`println!`マクロを実装することになる。`write_str()`を実装する
- /// ことにより自動的に`write_fmt()`を手にすることができる。
++
+ /// Implementing `core::fmt::Write` enables usage of the `format_args!` macros, which in turn are
+ /// used to implement the `kernel`'s `print!` and `println!` macros. By implementing `write_str()`,
+ /// we get `write_fmt()` automatically.
  ///
-+/// この関数は `&mut self` を取るので、内部構造体を実装する必要がある
++/// The function takes an `&mut self`, so it must be implemented for the inner struct.
 +///
- /// [`src/print.rs`]を参照
+ /// See [`src/print.rs`].
  ///
  /// [`src/print.rs`]: ../../print/index.html
 -impl fmt::Write for QEMUOutput {
@@ -142,7 +139,7 @@ diff -uNr 03_hacky_hello_world/src/bsp/raspberrypi/console.rs 04_safe_globals/sr
          for c in s.chars() {
 -            unsafe {
 -                core::ptr::write_volatile(0x3F20_1000 as *mut u8, c as u8);
-+            // 改行を復帰+改行に変換する
++            // Convert newline to carrige return + newline.
 +            if c == '\n' {
 +                self.write_char('\r')
              }
@@ -151,12 +148,12 @@ diff -uNr 03_hacky_hello_world/src/bsp/raspberrypi/console.rs 04_safe_globals/sr
          }
 
          Ok(())
-@@ -41,7 +80,37 @@
- // パブリックコード
+@@ -41,7 +80,39 @@
+ // Public Code
  //--------------------------------------------------------------------------------------------------
 
 +impl QEMUOutput {
-+    /// 新しいインスタンスを作成する
++    /// Create a new instance.
 +    pub const fn new() -> QEMUOutput {
 +        QEMUOutput {
 +            inner: NullLock::new(QEMUOutputInner::new()),
@@ -164,7 +161,7 @@ diff -uNr 03_hacky_hello_world/src/bsp/raspberrypi/console.rs 04_safe_globals/sr
 +    }
 +}
 +
- /// コンソールへの参照を返す
+ /// Return a reference to the console.
 -pub fn console() -> impl console::interface::Write {
 -    QEMUOutput {}
 +pub fn console() -> &'static dyn console::interface::All {
@@ -172,16 +169,16 @@ diff -uNr 03_hacky_hello_world/src/bsp/raspberrypi/console.rs 04_safe_globals/sr
  }
 +
 +//------------------------------------------------------------------------------
-+// OSインタフェースコード
++// OS Interface Code
 +//------------------------------------------------------------------------------
 +use synchronization::interface::Mutex;
 +
-+/// `core::fmt::Write`の実装に`args`をそのまま渡すが、ミューテックスで
-+/// ガードしてアクセスをシリアライズしている
++/// Passthrough of `args` to the `core::fmt::Write` implementation, but guarded by a Mutex to
++/// serialize access.
 +impl console::interface::Write for QEMUOutput {
 +    fn write_fmt(&self, args: core::fmt::Arguments) -> fmt::Result {
-+        // 可読性を高めるために`core::fmt::Write::write:fmt()`の
-+        // 呼び出しに完全修飾構文を採用
++        // Fully qualified syntax for the call to `core::fmt::Write::write_fmt()` to increase
++        // readability.
 +        self.inner.lock(|inner| fmt::Write::write_fmt(inner, args))
 +    }
 +}
@@ -197,31 +194,32 @@ diff -uNr 03_hacky_hello_world/src/bsp/raspberrypi/console.rs 04_safe_globals/sr
 diff -uNr 03_hacky_hello_world/src/console.rs 04_safe_globals/src/console.rs
 --- 03_hacky_hello_world/src/console.rs
 +++ 04_safe_globals/src/console.rs
-@@ -10,9 +10,22 @@
+@@ -12,12 +12,24 @@
 
- /// コンソールインタフェース
+ /// Console interfaces.
  pub mod interface {
 +    use core::fmt;
 +
-     /// コンソール write関数
+     /// Console write functions.
 -    ///
--    /// `core::fmt::Write` は今まさに必要なもの。console::Write`の実装が
--    /// 読者に意図を伝える良いヒントになるので、ここで再エクスポートする。
+-    /// `core::fmt::Write` is exactly what we need for now. Re-export it here because
+-    /// implementing `console::Write` gives a better hint to the reader about the
+-    /// intention.
 -    pub use core::fmt::Write;
 +    pub trait Write {
-+        /// Rust形式の文字列をWrite
++        /// Write a Rust format string.
 +        fn write_fmt(&self, args: fmt::Arguments) -> fmt::Result;
 +    }
 +
-+    /// コンソール統計
++    /// Console statistics.
 +    pub trait Statistics {
-+        /// 書き込んだ文字数を返す
++        /// Return the number of characters written.
 +        fn chars_written(&self) -> usize {
 +            0
 +        }
 +    }
 +
-+    /// 本格的コンソール用のトレイトエイリアス.
++    /// Trait alias for a full-fledged console.
 +    pub trait All: Write + Statistics {}
  }
 
@@ -252,11 +250,11 @@ diff -uNr 03_hacky_hello_world/src/main.rs 04_safe_globals/src/main.rs
  mod print;
 +mod synchronization;
 
- /// 最初の初期化コード
+ /// Early init code.
  ///
 @@ -124,7 +126,12 @@
  ///
- /// - アクティブなコアはこの関数を実行しているコアだけでなければならない
+ /// - Only a single core must be active and running this function.
  unsafe fn kernel_init() -> ! {
 -    println!("Hello from Rust!");
 +    use console::console;
@@ -291,9 +289,9 @@ diff -uNr 03_hacky_hello_world/src/synchronization.rs 04_safe_globals/src/synchr
 +//
 +// Copyright (c) 2020-2023 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! 同期プリミティブ
++//! Synchronization primitives.
 +//!
-+//! # 参考
++//! # Resources
 +//!
 +//!   - <https://doc.rust-lang.org/book/ch16-04-extensible-concurrency-sync-and-send.html>
 +//!   - <https://stackoverflow.com/questions/59428096/understanding-the-send-trait>
@@ -302,30 +300,30 @@ diff -uNr 03_hacky_hello_world/src/synchronization.rs 04_safe_globals/src/synchr
 +use core::cell::UnsafeCell;
 +
 +//--------------------------------------------------------------------------------------------------
-+// パブリック定義
++// Public Definitions
 +//--------------------------------------------------------------------------------------------------
 +
-+/// 同期インタフェース
++/// Synchronization interfaces.
 +pub mod interface {
 +
-+    /// このトレイトを実装しているオブジェクトは、与えられたクロージャにおいて
-+    /// Mutexでラップされたデータへの排他的アクセスを保証する
++    /// Any object implementing this trait guarantees exclusive access to the data wrapped within
++    /// the Mutex for the duration of the provided closure.
 +    pub trait Mutex {
-+        /// このmutexでラップされるデータの型
++        /// The type of the data that is wrapped by this mutex.
 +        type Data;
 +
-+        /// mutexをロックし、ラップされたデータへの一時的可変アクセスをクロージャに保証する
-+        fn lock<R>(&self, f: impl FnOnce(&mut Self::Data) -> R) -> R;
++        /// Locks the mutex and grants the closure temporary mutable access to the wrapped data.
++        fn lock<'a, R>(&'a self, f: impl FnOnce(&'a mut Self::Data) -> R) -> R;
 +    }
 +}
 +
-+/// 教育目的の疑似ロック
++/// A pseudo-lock for teaching purposes.
 +///
-+/// 実際のMutexの実装とは異なり、保持するデータに対する他のコアからの同時アクセス
-+/// からは保護されない。この部分は後のレッスン用に残される。
++/// In contrast to a real Mutex implementation, does not protect against concurrent access from
++/// other cores to the contained data. This part is preserved for later lessons.
 +///
-+/// ロックは、そうすることが安全な場合に限り、すなわち、カーネルがシングルスレッド、
-+/// つまり割り込み無効でシングルコアで実行されている場合に限り、使用される。
++/// The lock will only be used as long as it is safe to do so, i.e. as long as the kernel is
++/// executing single-threaded, aka only running on a single core with interrupts disabled.
 +pub struct NullLock<T>
 +where
 +    T: ?Sized,
@@ -334,14 +332,14 @@ diff -uNr 03_hacky_hello_world/src/synchronization.rs 04_safe_globals/src/synchr
 +}
 +
 +//--------------------------------------------------------------------------------------------------
-+// パブリックコード
++// Public Code
 +//--------------------------------------------------------------------------------------------------
 +
 +unsafe impl<T> Send for NullLock<T> where T: ?Sized + Send {}
 +unsafe impl<T> Sync for NullLock<T> where T: ?Sized + Send {}
 +
 +impl<T> NullLock<T> {
-+    /// インスタンスを作成する
++    /// Create an instance.
 +    pub const fn new(data: T) -> Self {
 +        Self {
 +            data: UnsafeCell::new(data),
@@ -350,15 +348,15 @@ diff -uNr 03_hacky_hello_world/src/synchronization.rs 04_safe_globals/src/synchr
 +}
 +
 +//------------------------------------------------------------------------------
-+// OSインタフェースコード
++// OS Interface Code
 +//------------------------------------------------------------------------------
 +
 +impl<T> interface::Mutex for NullLock<T> {
 +    type Data = T;
 +
-+    fn lock<R>(&self, f: impl FnOnce(&mut Self::Data) -> R) -> R {
-+        // 実際のロックでは、この行をカプセル化するコードがあり、
-+        // この可変参照が一度に一つしか渡されないことを保証している
++    fn lock<'a, R>(&'a self, f: impl FnOnce(&'a mut Self::Data) -> R) -> R {
++        // In a real lock, there would be code encapsulating this line that ensures that this
++        // mutable reference will ever only be given out once at a time.
 +        let data = unsafe { &mut *self.data.get() };
 +
 +        f(data)

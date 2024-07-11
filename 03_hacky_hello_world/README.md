@@ -1,20 +1,26 @@
-# チュートリアル 03 - ハック版 Hello World
+# Tutorial 03 - Hacky Hello World
 
 ## tl;dr
 
-- グローバルな`print!()`マクロを導入し、いち早く「printfデバッグ」を可能にします。
-- チュートリアルの長さを適度に保つため、プリント機能は現時点ではRaspberryの`UART`を正しく設定しなくても使用できるようにQEMUのプロパティを「悪用」します。
-- 本物のハードウェア`UART`の使用については後のチュートリアルで順に説明します。
+- Introducing global `println!()` macros to enable "printf debugging" at the earliest.
+- To keep tutorial length reasonable, printing functions for now "abuse" a QEMU property that lets
+  us use the Raspberry's `UART` without setting it up properly.
+- Using the real hardware `UART` is enabled step-by-step in following tutorials.
 
-## 特筆すべき追加事項
+## Notable additions
 
-- `src/console.rs`でコンソールコマンドのためのインタフェース`Traits`を導入します。
-- `src/bsp/raspberrypi/console.rs`でQEMUのエミュレートUART用のインタフェースを実装します。
-- パニックハンドラはこの新しい`print!()`を使ってエラーメッセージを表示します。
+- `src/console.rs` introduces interface `Traits` for console commands and global access to the
+  kernel's console through `console::console()`.
+- `src/bsp/raspberrypi/console.rs` implements the interface for QEMU's emulated UART.
+- The panic handler makes use of the new `println!()` to display user error messages.
+- There is a new Makefile target, `make test`, intended for automated testing. It boots the compiled
+  kernel in `QEMU`, and checks for an expected output string produced by the kernel.
+  - In this tutorial, it checks for the string `Stopping here`, which is emitted by the `panic!()`
+    at the end of `main.rs`.
 
-## テスト
+## Test it
 
-このチュートリアルからはQEMUをアセンブリモードで実行しません。ここからは`console`出力を表示します。
+QEMU is no longer running in assembly mode. It will from now on show the output of the `console`.
 
 ```console
 $ make qemu
@@ -29,7 +35,7 @@ Panic location:
 Stopping here.
 ```
 
-## 前チュートリアルとのdiff
+## Diff to previous
 ```diff
 
 diff -uNr 02_runtime_init/Cargo.toml 03_hacky_hello_world/Cargo.toml
@@ -126,27 +132,27 @@ diff -uNr 02_runtime_init/src/bsp/raspberrypi/console.rs 03_hacky_hello_world/sr
 +//
 +// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! BSPコンソール装置
++//! BSP console facilities.
 +
 +use crate::console;
 +use core::fmt;
 +
 +//--------------------------------------------------------------------------------------------------
-+// プライベート定義
++// Private Definitions
 +//--------------------------------------------------------------------------------------------------
 +
-+/// QEMUの出力を無から生成する神秘的で魔法のような装置
++/// A mystical, magical device for generating QEMU output out of the void.
 +struct QEMUOutput;
 +
 +//--------------------------------------------------------------------------------------------------
-+// プライベート定義
++// Private Code
 +//--------------------------------------------------------------------------------------------------
 +
-+/// `core::fmt::Write`を実装すると`format_args!`マクロが利用可能になる。これはひいては
-+/// `カーネル`の`print!`と`println!`マクロを実装することになる。`write_str()`を実装する
-+/// ことにより自動的に`write_fmt()`を手にすることができる。
++/// Implementing `core::fmt::Write` enables usage of the `format_args!` macros, which in turn are
++/// used to implement the `kernel`'s `print!` and `println!` macros. By implementing `write_str()`,
++/// we get `write_fmt()` automatically.
 +///
-+/// [`src/print.rs`]を参照
++/// See [`src/print.rs`].
 +///
 +/// [`src/print.rs`]: ../../print/index.html
 +impl fmt::Write for QEMUOutput {
@@ -162,10 +168,10 @@ diff -uNr 02_runtime_init/src/bsp/raspberrypi/console.rs 03_hacky_hello_world/sr
 +}
 +
 +//--------------------------------------------------------------------------------------------------
-+// パブリックコード
++// Public Code
 +//--------------------------------------------------------------------------------------------------
 +
-+/// コンソールへの参照を返す
++/// Return a reference to the console.
 +pub fn console() -> impl console::interface::Write {
 +    QEMUOutput {}
 +}
@@ -173,36 +179,36 @@ diff -uNr 02_runtime_init/src/bsp/raspberrypi/console.rs 03_hacky_hello_world/sr
 diff -uNr 02_runtime_init/src/bsp/raspberrypi.rs 03_hacky_hello_world/src/bsp/raspberrypi.rs
 --- 02_runtime_init/src/bsp/raspberrypi.rs
 +++ 03_hacky_hello_world/src/bsp/raspberrypi.rs
-@@@ -4,5 +4,6 @@
+@@ -4,4 +4,5 @@
 
- //! Raspberry Pi 3/4用のトップレベルのBSPファイル
+ //! Top-level BSP file for the Raspberry Pi 3 and 4.
 
 +pub mod console;
  pub mod cpu;
 
-
 diff -uNr 02_runtime_init/src/console.rs 03_hacky_hello_world/src/console.rs
 --- 02_runtime_init/src/console.rs
 +++ 03_hacky_hello_world/src/console.rs
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,32 @@
 +// SPDX-License-Identifier: MIT OR Apache-2.0
 +//
 +// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! システムコンソール
++//! System console.
 +
 +use crate::bsp;
 +
 +//--------------------------------------------------------------------------------------------------
-+// パブリック定義
++// Public Definitions
 +//--------------------------------------------------------------------------------------------------
 +
-+/// コンソールインタフェース
++/// Console interfaces.
 +pub mod interface {
-+    /// コンソール write関数
++    /// Console write functions.
 +    ///
-+    /// `core::fmt::Write` は今まさに必要なもの。console::Write`の実装が
-+    /// 読者に意図を伝える良いヒントになるので、ここで再エクスポートする。
++    /// `core::fmt::Write` is exactly what we need for now. Re-export it here because
++    /// implementing `console::Write` gives a better hint to the reader about the
++    /// intention.
 +    pub use core::fmt::Write;
 +}
 +
@@ -235,10 +241,11 @@ diff -uNr 02_runtime_init/src/main.rs 03_hacky_hello_world/src/main.rs
  mod panic_wait;
 +mod print;
 
- /// 最初の初期化コード
-@@ -122,5 +126,7 @@
+ /// Early init code.
  ///
- /// - アクティブなコアはこの関数を実行しているコアだけでなければならない
+@@ -120,5 +124,7 @@
+ ///
+ /// - Only a single core must be active and running this function.
  unsafe fn kernel_init() -> ! {
 -    panic!()
 +    println!("Hello from Rust!");
@@ -251,7 +258,7 @@ diff -uNr 02_runtime_init/src/panic_wait.rs 03_hacky_hello_world/src/panic_wait.
 +++ 03_hacky_hello_world/src/panic_wait.rs
 @@ -4,14 +4,61 @@
 
- //! 永久に待ち続けるパニックハンドラ
+ //! A panic handler that infinitely waits.
 
 -use crate::cpu;
 +use crate::{cpu, println};
@@ -322,13 +329,13 @@ diff -uNr 02_runtime_init/src/print.rs 03_hacky_hello_world/src/print.rs
 +//
 +// Copyright (c) 2018-2023 Andre Richter <andre.o.richter@gmail.com>
 +
-+//! プリント
++//! Printing.
 +
 +use crate::console;
 +use core::fmt;
 +
 +//--------------------------------------------------------------------------------------------------
-+// パブリックコード
++// Public Code
 +//--------------------------------------------------------------------------------------------------
 +
 +#[doc(hidden)]
@@ -338,17 +345,17 @@ diff -uNr 02_runtime_init/src/print.rs 03_hacky_hello_world/src/print.rs
 +    console::console().write_fmt(args).unwrap();
 +}
 +
-+/// 改行なしのプリント
++/// Prints without a newline.
 +///
-+/// <https://doc.rust-lang.org/src/std/macros.rs.html>からそのままコピー
++/// Carbon copy from <https://doc.rust-lang.org/src/std/macros.rs.html>
 +#[macro_export]
 +macro_rules! print {
 +    ($($arg:tt)*) => ($crate::print::_print(format_args!($($arg)*)));
 +}
 +
-+/// 改行付きのプリント
++/// Prints with a newline.
 +///
-+/// <https://doc.rust-lang.org/src/std/macros.rs.html>からそのままコピー
++/// Carbon copy from <https://doc.rust-lang.org/src/std/macros.rs.html>
 +#[macro_export]
 +macro_rules! println {
 +    () => ($crate::print!("\n"));

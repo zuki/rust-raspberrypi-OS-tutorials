@@ -1,129 +1,122 @@
-# チュートリアル 09 - 権限レベル
+# Tutorial 09 - Privilege Level
 
 ## tl;dr
 
-- 初期ブートコードで、`Hypervisor`権限レベル（AArch64では`EL2`）から
-  `Kernel`（`EL1`）権限レベルに移行します。
+- In early boot code, we transition from the `Hypervisor` privilege level (`EL2` in AArch64) to the
+  `Kernel` (`EL1`) privilege level.
 
-## 目次
+## Table of Contents
 
-- [チュートリアル 09 - 権限レベル](#チュートリアル-09---権限レベル)
-  - [tl;dr](#tldr)
-  - [目次](#目次)
-  - [はじめに](#はじめに)
-  - [このチュートリアルの範囲](#このチュートリアルの範囲)
-  - [エントリポイントでの`EL2`のチェック](#エントリポイントでのel2のチェック)
-  - [移行準備](#移行準備)
-  - [決して発生しない例外から復帰する](#決して発生しない例外から復帰する)
-  - [テストする](#テストする)
-  - [前回とのDiff](#前回とのdiff)
+- [Introduction](#introduction)
+- [Scope of this tutorial](#scope-of-this-tutorial)
+- [Checking for EL2 in the entrypoint](#checking-for-el2-in-the-entrypoint)
+- [Transition preparation](#transition-preparation)
+- [Returning from an exception that never happened](#returning-from-an-exception-that-never-happened)
+- [Test it](#test-it)
+- [Diff to previous](#diff-to-previous)
 
-## はじめに
+## Introduction
 
-アプリケーショングレードのCPUには、それぞれ目的が異なる「特権レベル」と
-呼ばれるものがあります。
+Application-grade CPUs have so-called `privilege levels`, which have different purposes:
 
-| 通常の用途 | AArch64 | RISC-V | x86 |
+| Typically used for | AArch64 | RISC-V | x86 |
 | ------------- | ------------- | ------------- | ------------- |
-| ユーザ空間アプリケーション | EL0 | U/VU | Ring 3 |
-| OSカーネル | EL1 | S/VS | Ring 0 |
-| ハイパーバイザ | EL2 | HS | Ring -1 |
-| 低レベルファームウェア | EL3 | M | |
+| Userspace applications | EL0 | U/VU | Ring 3 |
+| OS Kernel | EL1 | S/VS | Ring 0 |
+| Hypervisor | EL2 | HS | Ring -1 |
+| Low-Level Firmware | EL3 | M | |
 
-AArch64の`EL`は`Exception Level`（特権レベル）の略です。その他のアーキテクチャに
-関する詳しい情報は、次のリンクをご覧ください。
+`EL` in AArch64 stands for `Exception Level`. If you want more information regarding the other
+architectures, please have a look at the following links:
+- [x86 privilege rings](https://en.wikipedia.org/wiki/Protection_ring).
+- [RISC-V privilege modes](https://content.riscv.org/wp-content/uploads/2017/12/Tue0942-riscv-hypervisor-waterman.pdf).
 
-- [x86の権限リング](https://en.wikipedia.org/wiki/Protection_ring).
-- [RISC-Vの権限モード](https://content.riscv.org/wp-content/uploads/2017/12/Tue0942-riscv-hypervisor-waterman.pdf).
-
-先に進む前に、[Programmer’s Guide forARMv8-A]の「第3章」に目を通すことを
-強く勧めます。そこには、このトピックに関する簡潔な概要が書かれています。
+At this point, I strongly recommend that you glimpse over `Chapter 3` of the [Programmer’s Guide for
+ARMv8-A] before you continue. It gives a concise overview about the topic.
 
 [Programmer’s Guide for ARMv8-A]: http://infocenter.arm.com/help/topic/com.arm.doc.den0024a/DEN0024A_v8_architecture_PG.pdf
 
-## このチュートリアルの範囲
+## Scope of this tutorial
 
-デフォルトでは、Raspberryは常に`EL2`で実行を開始します。私たちは伝統的な
-「カーネル」を書いているので、より適切な`EL1`に移行しなければなりません。
+By default, the Raspberry will always start executing in `EL2`. Since we are writing a traditional
+`Kernel`, we have to transition into the more appropriate `EL1`.
 
-## エントリポイントでの`EL2`のチェック
+## Checking for EL2 in the entrypoint
 
-まず最初に、`EL1`に移行するためのコードを呼び出す前に、実際に`EL2`で実行
-されていることを確認する必要があります。そこで、`boot.s`の先頭に新しい
-チェックコードを追加し、`EL2`でない場合はCPUコアをパークするようにします。
+First of all, we need to ensure that we actually execute in `EL2` before we can call respective code
+to transition to `EL1`. Therefore, we add a new checkt to the top of `boot.s`, which parks the CPU
+core should it not be in `EL2`.
 
 ```
-// コアがEL2で実行している場合のみ処理を継続する。そうでなければパークさせる。
+// Only proceed if the core executes in EL2. Park it otherwise.
 mrs	x0, CurrentEL
 cmp	x0, {CONST_CURRENTEL_EL2}
 b.ne	.L_parking_loop
 ```
 
-その後、`boot.rs`の`prepare_el2_to_el1_transition()`を呼び出して、`EL2→EL1`の
-移行準備を続けます。
+Afterwards, we continue with preparing the `EL2` -> `EL1` transition by calling
+`prepare_el2_to_el1_transition()` in `boot.rs`:
 
 ```rust
 #[no_mangle]
 pub unsafe extern "C" fn _start_rust(phys_boot_core_stack_end_exclusive_addr: u64) -> ! {
     prepare_el2_to_el1_transition(phys_boot_core_stack_end_exclusive_addr);
 
-    // EL1に「復帰する」ために`eret`を使用する。これによりruntime_init()はEL1で実行される。
+    // Use `eret` to "return" to EL1. This results in execution of kernel_init() in EL1.
     asm::eret()
 }
 ```
 
-## 移行準備
+## Transition preparation
 
-`EL2`は`EL1`よりも高い権限を持っているため、様々なプロセッサの機能を制御
-しており、`EL1`のコードにそれらの使用の許可・不許可を与えることができます。
-たとえば、タイマレジスタやカウンタレジスタへのアクセスがその例です。それらは
-[チュートリアル07](../07_timestamps/)からすでに使用しているので、もちろん
-そのまま使用したいと思います。そこで、[Counter-timer Hypervisor Control register]
-にそれぞれのフラグを設定し、さらに仮想オフセットを0に設定して、常に実際の
-物理的な値を得るようにします。
+Since `EL2` is more privileged than `EL1`, it has control over various processor features and can
+allow or disallow `EL1` code to use them. One such example is access to timer and counter registers.
+We are already using them since [tutorial 07](../07_timestamps/), so of course we want to keep them.
+Therefore we set the respective flags in the [Counter-timer Hypervisor Control register] and
+additionally set the virtual offset to zero so that we get the real physical value everytime:
 
 [Counter-timer Hypervisor Control register]:  https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/registers/cnthctl_el2.rs.html
 
 ```rust
-// EL1のタイマカウンタレジスタを有効にする
+// Enable timer counter registers for EL1.
 CNTHCTL_EL2.write(CNTHCTL_EL2::EL1PCEN::SET + CNTHCTL_EL2::EL1PCTEN::SET);
 
-// カウンタを読み込むためのオフセットはなし
+// No offset for reading the counters.
 CNTVOFF_EL2.set(0);
 ```
 
-次に、`EL1`が`AArch64`モードで実行し、（これも可能な）`AArch32`では実行
-しないように[Hypervisor Configuration Register]を設定します。
+Next, we configure the [Hypervisor Configuration Register] such that `EL1` runs in `AArch64` mode,
+and not in `AArch32`, which would also be possible.
 
 [Hypervisor Configuration Register]: https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/registers/hcr_el2.rs.html
 
 ```rust
-// EL1の実行モードをAArch64に設定する
+// Set EL1 execution state to AArch64.
 HCR_EL2.write(HCR_EL2::RW::EL1IsAarch64);
 ```
 
-## 決して発生しない例外から復帰する
+## Returning from an exception that never happened
 
-上位のELから下位のELに移行する方法は、実は1つしかなく、それは{ERET}命令を
-実行することです。
+There is actually only one way to transition from a higher EL to a lower EL, which is by way of
+executing the [ERET] instruction.
 
 [ERET]: https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/asm.rs.html#92-101
 
-この命令は、[Saved Program Status Register - EL2]の内容を
-`Current Program Status Register - EL1`にコピーし、[Exception Link Register - EL2]
-に格納されている命令アドレスにジャンプします。
+This instruction will copy the contents of the [Saved Program Status Register - EL2] to `Current
+Program Status Register - EL1` and jump to the instruction address that is stored in the [Exception
+Link Register - EL2].
 
-これは基本的に例外が発生した時に行われることとは逆のことです。これに
-ついては、次回のチュートリアルで学びます。
+This is basically the reverse of what is happening when an exception is taken. You'll learn about
+that in an upcoming tutorial.
 
 [Saved Program Status Register - EL2]: https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/registers/spsr_el2.rs.html
 [Exception Link Register - EL2]: https://docs.rs/aarch64-cpu/9.0.0/src/aarch64_cpu/registers/elr_el2.rs.html
 
 ```rust
-// 模擬例外復帰を設定する
+// Set up a simulated exception return.
 //
-// まず、すべての割り込みがマスクし、SP_EL1をスタックポインタとして使用する
-// ように保存プログラム状態を偽装する
+// First, fake a saved program status where all interrupts were masked and SP_EL1 was used as a
+// stack pointer.
 SPSR_EL2.write(
     SPSR_EL2::D::Masked
         + SPSR_EL2::A::Masked
@@ -132,40 +125,38 @@ SPSR_EL2.write(
         + SPSR_EL2::M::EL1h,
 );
 
-// 次に、リンクレジスタが runtime_init()を指すようにする
+// Second, let the link register point to kernel_init().
 ELR_EL2.set(crate::kernel_init as *const () as u64);
 
-// SP_EL1 (スタックポインタ)を設定する。これはEL1に「復帰した」した際に
-// EL1で使用されことになる。EL2に戻ることは全く想定していないので
-// 同じスタックを再利用するだけである。
+// Set up SP_EL1 (stack pointer), which will be used by EL1 once we "return" to it. Since there
+// are no plans to ever return to EL2, just re-use the same stack.
 SP_EL1.set(phys_boot_core_stack_end_exclusive_addr);
 ```
 
-ご覧のとおり、`ELR_EL2`にはこれまでエントリポイントから直接呼び出すために
-使用していた[runtime_init()] 関数のアドレスを設定しています。最後に、
-`SP_EL1`用のスタックポインタを設定します
+As you can see, we are populating `ELR_EL2` with the address of the `kernel_init()` function that we
+earlier used to call directly from the entrypoint. Finally, we set the stack pointer for `SP_EL1`.
 
-スタックのアドレスが関数の引数として与えられていることにお気づきでしょうか。
-覚えているかもしれませんが、`boot.s`の`_start()`で`EL2`用のスタックをすでに
-設定しています。`EL2`に戻る予定はないので、`EL1`用のスタックとして再利用
-することができます。それでそのアドレスを関数の引数として渡しています。
+You might have noticed that the stack's address was supplied as a function argument. As you might
+remember, in  `_start()` in `boot.s`, we are already setting up the stack for `EL2`. Since there
+are no plans to ever return to `EL2`, we can just re-use the same stack for `EL1`, so its address is
+forwarded using function arguments.
 
-最後に、`_start_rust()`に戻って、`ERET`の呼び出しが行われます。
+Lastly, back in `_start_rust()` a call to `ERET` is made:
 
 ```rust
 #[no_mangle]
 pub unsafe extern "C" fn _start_rust(phys_boot_core_stack_end_exclusive_addr: u64) -> ! {
     prepare_el2_to_el1_transition(phys_boot_core_stack_end_exclusive_addr);
 
-    // EL1に「復帰する」ために`eret`を使用する。これによりruntime_init()はEL1で実行される。
+    // Use `eret` to "return" to EL1. This results in execution of kernel_init() in EL1.
     asm::eret()
 }
 ```
 
-## テストする
+## Test it
 
-`main.rs`では「現在の特権レベル」を表示し、さらに、`SPSR_EL2`のマスクビットが
-`EL1`になっているかを検査しています。
+In `main.rs`, we print the `current privilege level` and additionally inspect if the mask bits in
+`SPSR_EL2` made it to `EL1` as well:
 
 ```console
 $ make chainboot
@@ -203,7 +194,7 @@ Minipush 1.0
 [    1.167904] Echoing input now
 ```
 
-## 前回とのDiff
+## Diff to previous
 ```diff
 
 diff -uNr 08_hw_debug_JTAG/Cargo.toml 09_privilege_level/Cargo.toml

@@ -1,37 +1,38 @@
-# チュートリアル 01 - 永久にウエイト
+# Tutorial 01 - Wait Forever
 
 ## tl;dr
 
-- プロジェクトスケルトンを設定する。
-- カーネルコードを実行しているすべてのCPUを停止するだけの小さなアセンブリコードを実行する。
+- The project skeleton is set up.
+- A small piece of assembly code runs that just halts all CPU cores executing the kernel code.
 
-## ビルド
+## Building
 
-- `Makefile`ターゲット:
-    - `doc`: ドキュメントを生成する。
-    - `qemu`: `kernel`をQEMUで実行する。
+- `Makefile` targets:
+    - `doc`: Generate documentation.
+    - `qemu`: Run the `kernel` in QEMU
     - `clippy`
     - `clean`
-    - `readelf`: `ELF`出力を見る。
-    - `objdump`: アセンブリコードを見る。
-    - `nm`: シンボルを見る。
+    - `readelf`: Inspect the `ELF` output.
+    - `objdump`: Inspect the assembly.
+    - `nm`: Inspect the symbols.
 
-## 見るべきコード
+## Code to look at
 
-- `BSP`-固有の`link.ld` リンカスクリプト。
-    - ロードアドレスは`0x8_0000`
-    - `.text`セクションのみ
-- `main.rs`: 重要な [内部属性]:
+- `BSP`-specific `kernel.ld` linker script.
+    - Load address at `0x8_0000`
+    - Only `.text` section.
+- `main.rs`: Important [inner attributes]:
     - `#![no_std]`, `#![no_main]`
-- `boot.s`: `_start()`を実行しているすべてのコアを停止する`wfe` (Wait For Event) を実行するアセンブリ関数 `_start()`
-- コンパイラを満足させるために`#[panic_handler]`関数を定義する（必要がある）。
-    - 使われないため削除されるだろうから、`unimplemented!()`とする。
+- `boot.s`: Assembly `_start()` function that executes `wfe` (Wait For Event), halting all cores
+  that are executing `_start()`.
+- We (have to) define a `#[panic_handler]` function to make the compiler happy.
+    - Make it `unimplemented!()` because it will be stripped out since it is not used.
 
-[内部属性]: https://doc.rust-lang.org/reference/attributes.html
+[inner attributes]: https://doc.rust-lang.org/reference/attributes.html
 
-### テストする
+### Test it
 
-プロジェクトフォルダで、QEMUを起動して、CPUコアが`wfe`でスピンしているのを観察する。
+In the project folder, invoke QEMU and observe the CPU core spinning on `wfe`:
 
 ```console
 $ make qemu

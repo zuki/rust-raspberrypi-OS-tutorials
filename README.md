@@ -1,4 +1,4 @@
-# Raspberry Pi上におけるRustによるオペレーティングシステム開発チュートリアル
+# Operating System development tutorials in Rust on the Raspberry Pi
 
 ![](https://github.com/rust-embedded/rust-raspberrypi-OS-tutorials/workflows/BSP-RPi3/badge.svg) ![](https://github.com/rust-embedded/rust-raspberrypi-OS-tutorials/workflows/BSP-RPi4/badge.svg) ![](https://github.com/rust-embedded/rust-raspberrypi-OS-tutorials/workflows/Unit-Tests/badge.svg) ![](https://github.com/rust-embedded/rust-raspberrypi-OS-tutorials/workflows/Integration-Tests/badge.svg) ![](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue)
 
@@ -6,50 +6,47 @@
 
 <img src="doc/header.jpg" height="372"> <img src="doc/minipush_demo_frontpage.gif" height="372">
 
-## ℹ️ はじめに
+## ℹ️ Introduction
 
-このチュートリアル・シリーズは、ARMの64ビット[ARMv8-Aアーキテクチャ]に初めて触れる
-ホビーOS開発者のためのものです。このチュートリアルでは、組み込みシステム用の
-[モノリシック]なOSカーネルをゼロから書く方法を、ステップ・バイ・ステップで説明します。
-このチュートリアルでは、シリアルコンソールへの書き込み、仮想メモリの設定、ハードウェア
-例外の処理など、一般的なオペレーティングシステムのタスクの実装をカバーしています。
-Rustのユニークな機能を活用して、安全性とスピードを追求します。
+This is a tutorial series for hobby OS developers who are new to ARM's 64 bit [ARMv8-A
+architecture]. The tutorials will give a guided, step-by-step tour of how to write a [monolithic]
+Operating System `kernel` for an `embedded system` from scratch. They cover implementation of common
+Operating Systems tasks, like writing to the serial console, setting up virtual memory and handling
+HW exceptions. All while leveraging `Rust`'s unique features to provide for safety and speed.
 
-楽しんでください。
+Have fun!
 
-_<br>Andre ([@andre-richter])_
+_Best regards,<br>Andre ([@andre-richter])_
 
-追伸: 中国語版のチュートリアルが[@colachg]と[@readlnh]により開始されています。
-各フォルダにある[`README.CN.md`](README.CN.md)がそれです。ただし、今では少し内容が
-古くなっています。
+P.S.: For other languages, please look out for alternative README files. For example,
+[`README.CN.md`](README.CN.md) or [`README.ES.md`](README.ES.md). Many thanks to our
+[translators](#translations-of-this-repository) 🙌.
 
-[ARMv8-Aアーキテクチャ]: https://developer.arm.com/products/architecture/cpu-architecture/a-profile/docs
-[モノリシック]: https://en.wikipedia.org/wiki/Monolithic_kernel
+[ARMv8-A architecture]: https://developer.arm.com/products/architecture/cpu-architecture/a-profile/docs
+[monolithic]: https://en.wikipedia.org/wiki/Monolithic_kernel
 [@andre-richter]: https://github.com/andre-richter
 
-## 📑 構成
+## 📑 Organization
 
-- 各チュートリアルは、スタンドアローンで起動可能な`kerrnl`バイナリを含んでいます。
-- 各新規チュートリアルでは、前回のチュートリアルを拡張します。
-- 各チュートリアルの`README`には、追加された部分の概要を説明する簡単な`tl;dr`
-  セクションがあります。また、前回のチュートリアルのソースコードとの`diff`が表示
-  されているので、変更点や追加点を簡単に確認することができます。
-    - 一部のチュートリアルでは、`tl;dr`セクションだけでなく、本格的で詳細なテキストが
-    掲載されています。長期的には、すべてのチュートリアルに全文を掲載する予定ですが、
-    今のところ、`tl;dr`と`diff`だけでは理解できないと思われるチュートリアルに限定
-    しています。
-- これらのチュートリアルで書かれたコードは**Raspberry Pi 3**と**Raspberry Pi 4**に対応
-  しており、動作します。
-    - チュートリアル1から5までは、QEMUで動作させることに意味がある基礎的なコードです。
-    - [チュートリアル5](05_drivers_gpio_uart)からは、実際のRaspberryにカーネルを
-    ロードして実行し、`UART`経由で出力を観察することができます。
-- Raspberry Pi 3と4が主なターゲットボードですが、コードはモジュール方式で書かれて
-  いるので、他のCPUアーキテクチャやボードにも簡単に移植することができます。
-    - 誰かが**RISC-V**の実装に挑戦してくれると嬉しいですね。
-- 編集には、[Rust Analyzer]付きの[Visual Studio Code]をお勧めします。
-- チュートリアルのテキストに加えて、各チュートリアルで`make doc`コマンドも試して
-  みてください。これにより、広範囲に渡ってドキュメント化されたコードを簡単に閲覧
-  することができます。
+- Each tutorial contains a stand-alone, bootable `kernel` binary.
+- Each new tutorial extends the previous one.
+- Each tutorial `README` will have a short `tl;dr` section giving a brief overview of the additions,
+  and show the source code `diff` to the previous tutorial, so that you can conveniently inspect the
+  changes/additions.
+    - Some tutorials have a full-fledged, detailed text in addition to the `tl;dr` section. The
+      long-term plan is that all tutorials get a full text, but for now this is exclusive to
+      tutorials where I think that `tl;dr` and `diff` are not enough to get the idea.
+- The code written in these tutorials supports and runs on the **Raspberry Pi 3** and the
+  **Raspberry Pi 4**.
+  - Tutorials 1 till 5 are groundwork code which only makes sense to run in `QEMU`.
+  - Starting with [tutorial 5](05_drivers_gpio_uart), you can load and run the kernel on the real
+    Raspberrys and observe output over `UART`.
+- Although the Raspberry Pi 3 and 4 are the main target boards, the code is written in a modular
+  fashion which allows for easy porting to other CPU architectures and/or boards.
+  - I would really love if someone takes a shot at a **RISC-V** implementation!
+- For editing, I recommend [Visual Studio Code] with [Rust Analyzer].
+- In addition to the tutorial text, also check out the `make doc` command in each tutorial. It lets
+  you browse the extensively documented code in a convenient way.
 
 ### Output of `make doc`
 
@@ -58,25 +55,22 @@ _<br>Andre ([@andre-richter])_
 [Visual Studio Code]: https://code.visualstudio.com
 [Rust Analyzer]: https://rust-analyzer.github.io
 
-## 🛠 システム要件
+## 🛠 System Requirements
 
-チュートリアルは、主に**Linux**ベースのディストリビューションを対象としています。
-ほとんどのものは**macOS**などのUnix類似システムでも動作しますが、これはあくまで
-_実験的なもの_ です。
+The tutorials are primarily targeted at **Linux**-based distributions. Most stuff will also work on **macOS**, but this is only _experimental_.
 
-### 🚀 tl;dr
+### 🚀 The tl;dr Version
 
-1. [Dockerをインストールします][install_docker].
-1. (**Linux only**) [docker group]にユーザアカウントを追加します.
-1. `Rust`ツールチェーンを用意します。ほとんどのものは、最初に使用する際の
-   [rust-toolchain](rust-toolchain)ファイルで処理されます。残されているのは次の
-   走査だけです。
-   1. すでにRustがインストールされている場合、
+1. [Install Docker Engine][install_docker].
+1. (**Linux only**) Ensure your user account is in the [docker group].
+1. Prepare the `Rust` toolchain. Most of it will be handled on first use through the
+   [rust-toolchain.toml](rust-toolchain.toml) file. What's left for us to do is:
+   1. If you already have a version of Rust installed:
       ```bash
       cargo install cargo-binutils rustfilt
       ```
 
-   2. Rustを1からインストールする必要がある場合、
+   1. If you need to install Rust from scratch:
       ```bash
       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
@@ -84,16 +78,14 @@ _実験的なもの_ です。
       cargo install cargo-binutils rustfilt
       ```
 
-1. `Visual Studio Code`を試用する場合は[Rust Analyzer extension]をインストールする
-   ことを強く勧めます。
+1. In case you use `Visual Studio Code`, I strongly recommend installing the [Rust Analyzer extension].
+1. (**macOS only**) Install a few `Ruby` gems.
 
-1. (**macOS only**) `Ruby` gemを少しインストールする。
+  This was last tested by the author with Ruby version `3.0.2` on `macOS Monterey`. If you are using
+  `rbenv`, the respective `.ruby-version` file is already in place. If you never heard of `rbenv`,
+  try using [this little guide](https://stackoverflow.com/a/68118750).
 
-  これは`macOS Monterey`上のRuby `3.0.2` でテストしています。`rbenv`を使用している場合は
-  対応する`.ruby_version`ファイルが既に置かれています。`rbenv`について聞いたことがない場合は
-   [この暗澹なガイド](https://stackoverflow.com/a/68118750)を読んでください。
-
-   以下をリポジトリのルートディレクトリで実行してください。
+   Run this in the repository root folder:
 
    ```bash
    bundle config set --local path '.vendor/bundle'
@@ -104,59 +96,56 @@ _実験的なもの_ です。
 [docker group]: https://docs.docker.com/engine/install/linux-postinstall/
 [Rust Analyzer extension]: https://marketplace.visualstudio.com/items?itemName=matklad.rust-analyzer
 
-### 🧰 更に詳しく: ツールチェーンに格闘しなくてすむようにするために
+### 🧰 More Details: Eliminating Toolchain Hassle
 
-このシリーズでは、ユーザフレンドリを重視しています。そのため、組み込み開発における
-最大の悩みの種である「ツールチェーンとの格闘」を極力排除するようにしました。
+This series tries to put a strong focus on user friendliness. Therefore, efforts were made to
+eliminate the biggest painpoint in embedded development as much as possible: `Toolchain hassle`.
 
-Rustはそれ自体が既にそれを大いに助けるものになっています。というのも、Rustには
-クロスコンパイルの機能が備わっているからです。`x86`のホストからRaspberry Piの
-`AArch64`アーキテクチャへのクロスコンパイルに必要なものはすべて`rustup`によって
-自動的にインストールされます。しかし、Rustコンパイラの他にもいくつかのツールを
-使用します。次のようなツールです。
+Rust itself is already helping a lot in that regard, because it has built-in support for
+cross-compilation. All that we need for cross-compiling from an `x86` host to the Raspberry Pi's
+`AArch64` architecture will be automatically installed by `rustup`. However, besides the Rust
+compiler, we will use some more tools. Among others:
 
-- ホストシステム上でカーネルをエミュレートするための`QEMU`
-- `UART`経由でオンデマンドでカーネルをRaspberry Piにロードする自作ツールの`Minipush`
-- ターゲット上でのデバッグ用に`OpenOCD`と`GDB`
+- `QEMU` to emulate our kernel on the host system.
+- A self-made tool called `Minipush` to load a kernel onto the Raspberry Pi on-demand over `UART`.
+- `OpenOCD` and `GDB` for debugging on the target.
 
-各ツールの正しいバージョンをホストマシンにインストールしたり、コンパイルしたりする
-際には、多くの問題があります。たとえば、ディストリビューションが必要な最新バージョンを
-提供していないかもしれません。あるいは、これらのツールのコンパイルに必要な、入手困難な
-依存関係があるかもしれません。
+There is a lot that can go wrong while installing and/or compiling the correct version of each tool
+on your host machine. For example, your distribution might not provide the latest version that is
+needed. Or you are missing some hard-to-get dependencies for the compilation of one of these tools.
 
-そのため、可能な限り[Docker][install_docker]を活用します。必要なツールや依存関係が
-あらかじめインストールされている付属のコンテナを提供することで、それが必要になったら
-自動的に取り込まれるようにしています。Dockerについてもっと知りたい、提供されている
-コンテナを覗いてみたいという方は、リポジトリの[docker](docker)フォルダを参照して
-ください。
+This is why we will make use of [Docker][install_docker] whenever possible. We are providing an
+accompanying container that has all the needed tools or dependencies pre-installed, and it gets
+pulled in automagically once it is needed. If you want to know more about Docker and peek at the
+provided container, please refer to the repository's [docker](docker) folder.
 
 [install_docker]: https://docs.docker.com/engine/install/#server
 
-## 📟 USBシリアル出力
+## 📟 USB Serial Output
 
-チュートリアルで開発したカーネルは実際のハードウェア上で動作しますので、そのすべてを
-経験するためには、USBシリアルケーブルを用意することを強くお勧めします。
+Since the kernel developed in the tutorials runs on the real hardware, it is highly recommended to
+get a USB serial cable to get the full experience.
 
-- すぐに使えるUSBシリアルケーブルは [\[1\]] [\[2\]]にありますが、他のケーブルでも
-  動作します。ケーブルは`CP2102`チップをベースにしたものが理想的です。
-- 下図のように`GND`とGPIOピン`14/15`に接続します。
-- USBシリアルが使えるのは[Tutorial 5](05_drivers_gpio_uart)が最初です。そこでは、
-  SDカードから自作カーネルを起動するためのSDカードの準備方法を説明しています。
-- [tutorial 6](06_uart_chainloader)からは、Raspberryでのカーネルの起動が _とても_
-  快適になります。このチュートリアルでは、いわゆる`chainloader`が開発されており、
-  このチュートリアルがSDカードに手動でコピーする最後のファイルとなります。これに
-  より、`UART`経由でブート時にオンデマンドでチュートリアルのカーネルがロードされる
-  ようになります。
+- You can find USB-to-serial cables that should work right away at [\[1\]] [\[2\]], but many others
+  will work too. Ideally, your cable is based on the `CP2102` chip.
+- You connect it to `GND` and GPIO pins `14/15` as shown below.
+- [Tutorial 5](05_drivers_gpio_uart) is the first where you can use it. Check it out for
+  instructions on how to prepare the SD card to boot your self-made kernel from it.
+- Starting with [tutorial 6](06_uart_chainloader), booting kernels on your Raspberry is getting
+  _really_ comfortable. In this tutorial, a so-called `chainloader` is developed, which will be the
+  last file you need to manually copy on the SD card for a while. It will enable you to load the
+  tutorial kernels during boot on demand over `UART`.
 
 ![UART wiring diagram](doc/wiring.png)
 
 [\[1\]]: https://www.amazon.de/dp/B0757FQ5CX/ref=cm_sw_r_tw_dp_U_x_ozGRDbVTJAG4Q
 [\[2\]]: https://www.adafruit.com/product/954
 
-## 🙌 謝辞
+## 🙌 Acknowledgements
 
-このチュートリアルのオリジナルバージョンは、[Zoltan Baldaszti](https://github.com/bztsrc)氏による素晴らしいC言語による[RPi3上でのベアメタルプログラミングチュートリアル]
-をフォークしたものです。ありがとうございます。
+The original version of the tutorials started out as a fork of [Zoltan
+Baldaszti](https://github.com/bztsrc)'s awesome [tutorials on bare metal programming on
+RPi3](https://github.com/bztsrc/raspi3-tutorial) in `C`. Thanks for giving me a head start!
 
 ### Translations of this repository
 
@@ -173,14 +162,15 @@ Rustはそれ自体が既にそれを大いに助けるものになっていま�
 
 ## License
 
-次のいずれかでライセンスされています。いずれかを選択してください。
+Licensed under either of
 
 - Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
 - MIT license ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>)
 
 at your option.
 
-### 貢献
+### Contribution
 
-明示的に言及のない限り、提供された貢献はすべて、Apache-2.0ライセンで定義されている
-ように追加の利用条件なしに上記のデュアルライセンスになるものとします。
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the
+work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
+additional terms or conditions.

@@ -1,54 +1,55 @@
-# Tutorial 06 - UART Chainloader
+# チュートリアル 06 - UARTチェインローダ
 
 ## tl;dr
 
-- Running from an SD card was a nice experience, but it would be extremely tedious to do it for
-  every new binary. So let's write a [chainloader].
-- This will be the last binary you need to put on the SD card. Each following tutorial will provide
-  a `chainboot` target in the `Makefile` that lets you conveniently load the kernel over `UART`.
+- SDカードからの起動は良い経験でしたが、新しいバイナリのたびに行うのは非常に面倒です。
+  そこで、[チェインローダ]を書いてみます。
+- 今回がSDカードに書き込む必要のある最後のバイナリになります。今後のチュートリアルで
+  は、`Makefile`に`chainboot`ターゲットを用意することで`UART`経由でカーネルを便利に
+  ロードできるようにします。
 
-[chainloader]: https://en.wikipedia.org/wiki/Chain_loading
+[チェインローダ]: https://en.wikipedia.org/wiki/Chain_loading
 
 
-## Note
+## 注意
 
-Please note that there is stuff going on in this tutorial that is very hard to grasp by only looking
-at the source code changes.
+今回のチュートリアルでは、ソースコードの変更点を見ただけでは理解するのが非常に
+難しいことがある点に注意してください。
 
-The gist of it is that in `boot.s`, we are writing a piece of [position independent code] which
-automatically determines where the firmware has loaded the binary (`0x8_0000`), and where it was
-linked to (`0x200_0000`, see `link.ld`). The binary then copies itself from loaded to linked address
-(aka  "relocating" itself), and then jumps to the relocated version of `_start_rust()`.
+それは`boot.s`にあります。そこには[位置独立なコード]が書かれています。それは
+ファームウェアがバイナリをロードする場所（`0x8_0000`）とバイナリがリンクされる場所（`0x200_0000`、`link.ld`を参照）を自動的に決定します。バイナリは自分自身をロード
+アドレスからリンクアドレスにコピーし（つまり、自身を「再配置（リロケート）」し）、
+再配置されたバージョンの`_start_rust()`にジャンプします。
 
-Since the chainloader has put itself "out of the way" now, it can now receive another kernel binary
-from the `UART` and copy it to the standard load address of the RPi firmware at `0x8_0000`. Finally,
-it jumps to `0x8_0000` and the newly loaded binary transparently executes as if it had been loaded
-from SD card all along.
+チェインローダは自分自身を「邪魔にならない」場所に置くので、`UART`から別のカーネル
+バイナリを受信し、それをRPiファームウェアの標準ロードアドレスである`0x8_0000`に
+コピーすることができます。最後に、`0x8_0000`にジャンプすると、新しくロードされた
+バイナリは、あたかも初めからSDカードからロードされたかのように透過的に実行されます。
 
-Please bear with me until I find the time to write it all down here elaborately. For the time being,
-please see this tutorial as an enabler for a convenience feature that allows booting the following
-tutorials in a quick manner.
+すべてを詳しく説明する時間ができるまで、どうかご容赦ください。当面、今回のチュート
+リアルは、今後のチュートリアルを素早く起動できるようにするための便利な機能を実現
+するためのものと考えてください。
 
-[position independent code]: https://en.wikipedia.org/wiki/Position-independent_code
+[位置独立なコード]: https://en.wikipedia.org/wiki/Position-independent_code
 
-## Install and test it
+## インストールとテスト
 
-Our chainloader is called `MiniLoad` and is inspired by [raspbootin].
+我々のチェインローダは`MiniLoad`という名前であり、[raspbootin]の影響を受けています。
 
-You can try it with this tutorial already:
-1. Depending on your target hardware, run:`make` or `BSP=rpi4 make`.
-1. Copy `kernel8.img` to the SD card and put the SD card back into your RPi.
-1. Run `make chainboot` or `BSP=rpi4 make chainboot`.
-1. Connect the USB serial to your host PC.
-    - Wiring diagram at [top-level README](../README.md#-usb-serial-output).
-    - Make sure that you **DID NOT** connect the power pin of the USB serial. Only RX/TX and GND.
-1. Connect the RPi to the (USB) power cable.
-1. Observe the loader fetching a kernel over `UART`:
+すでに、今回のチュートリアルで試すことができます。
+1. ターゲットハードウェアに応じて、`make`または`BSP=rpi4 make`を実行します。
+2. `kernel8.img`をSDカードにコピーして、SDカードをRPiに差し戻します。
+3. `make chainboot`または`BSP=rpi4 make chainboot`を実行します。
+4. USBシリアルをホストPCに接続します。
+     - 配線図は[トップレベルのREADME](../README.md#-usb-serial-output)にあります。
+     - USBシリアルの電源ピンは接続**しない**でください。RX/TXとGNDのみ接続します。
+5. RPiを(USB)電源ケーブルに接続します。
+6. ローダが`UART`経由でカーネルを取得するのを確認します。
 
-> ❗ **NOTE**: `make chainboot` assumes a default serial device name of `/dev/ttyUSB0`. Depending on
-> your host operating system, the device name might differ. For example, on `macOS`, it might be
-> something like `/dev/tty.usbserial-0001`. In this case, please give the name explicitly:
-
+> ! **注意**: `make chainboot`はデフォルトのシリアルデバイス名を`/dev/ttyUSB0`と
+> 仮定しています。ホストOSによっては、デバイス名が異なる場合があります。たとえば、
+> `macOS`では、`/dev/tty.usbserial-0001`のような名前になります。この場合は、
+> 明示的に名前を指定してください。
 
 ```console
 $ DEV_SERIAL=/dev/tty.usbserial-0001 make chainboot
@@ -84,14 +85,15 @@ Minipush 1.0
 [4] Echoing input now
 ```
 
-In this tutorial, a version of the kernel from the previous tutorial is loaded for demo purposes. In
-subsequent tutorials, it will be the working directory's kernel.
+今回のチュートリアルでは、前回のチュートリアルで作成したバージョンのカーネルを
+デモ用にロードします。以降のチュートリアルでは、作業ディレクトリのカーネルを
+使用します。
 
-## Test it
+## テスト
 
-The `Makefile` in this tutorial has an additional target, `qemuasm`, that lets you nicely observe
-how the kernel, after relocating itself, jumps the load address region (`0x80_XXX`) to the relocated
-code at (`0x0200_0XXX`):
+今回のチュートリアルの`Makefile`には`qemuasm`というターゲットが追加されており、
+カーネルが自分自身を再配置した後、ロードアドレス領域(0x80_XXX)から(`0x0200_0XXX`)に
+再配置されたコードにジャンプする様子をよく観察することができます。
 
 ```console
 $ make qemuasm
@@ -117,7 +119,7 @@ IN:
 [...]
 ```
 
-## Diff to previous
+## 前チュートリアルとのdiff
 ```diff
 
 diff -uNr 05_drivers_gpio_uart/Cargo.toml 06_uart_chainloader/Cargo.toml
@@ -214,104 +216,129 @@ diff -uNr 05_drivers_gpio_uart/Makefile 06_uart_chainloader/Makefile
 diff -uNr 05_drivers_gpio_uart/src/_arch/aarch64/cpu/boot.s 06_uart_chainloader/src/_arch/aarch64/cpu/boot.s
 --- 05_drivers_gpio_uart/src/_arch/aarch64/cpu/boot.s
 +++ 06_uart_chainloader/src/_arch/aarch64/cpu/boot.s
+@@ -6,11 +6,11 @@
+ // 定義
+ //--------------------------------------------------------------------------------------------------
+
+-// シンボルのアドレスをレジスタにロードする（PC-相対）。
++// シンボルのアドレス（PC-相対アドレス）をレジスタにロードする。
+ //
+ // シンボルはプログラムカウンタの +/- 4GiB以内になければならない。
+ //
+-// # リソース
++// # 参考資料
+ //
+ // - https://sourceware.org/binutils/docs-2.36/as/AArch64_002dRelocations.html
+ .macro ADR_REL register, symbol
 @@ -18,6 +18,17 @@
- 	add	\register, \register, #:lo12:\symbol
+        add     \register, \register, #:lo12:\symbol
  .endm
 
-+// Load the address of a symbol into a register, absolute.
++// シンボルのアドレス（絶対アドレス）をレジスタにロードする
 +//
 +// # Resources
 +//
 +// - https://sourceware.org/binutils/docs-2.36/as/AArch64_002dRelocations.html
 +.macro ADR_ABS register, symbol
-+	movz	\register, #:abs_g2:\symbol
-+	movk	\register, #:abs_g1_nc:\symbol
-+	movk	\register, #:abs_g0_nc:\symbol
++       movz    \register, #:abs_g2:\symbol
++       movk    \register, #:abs_g1_nc:\symbol
++       movk    \register, #:abs_g0_nc:\symbol
 +.endm
 +
  .equ _core_id_mask, 0b11
 
  //--------------------------------------------------------------------------------------------------
 @@ -34,20 +45,31 @@
- 	and	x1, x1, _core_id_mask
- 	ldr	x2, BOOT_CORE_ID      // provided by bsp/__board_name__/cpu.rs
- 	cmp	x1, x2
--	b.ne	1f
-+	b.ne	2f
+        and     x1, x1, _core_id_mask // _code_id_mask = 0b11; このファイルの先頭で定義
+        ldr     x2, BOOT_CORE_ID      // BOOT_CORE_ID=0: bsp/__board_name__/cpu.rs で定義
+        cmp     x1, x2
+-       b.ne    1f                    // core0以外は1へジャンプ
++       b.ne    2f                    // core0以外は2へジャンプ
 +
-+	// If execution reaches here, it is the boot core.
++       // 処理がここに来たらそれはブートコア。
 
--	// If execution reaches here, it is the boot core. Now, prepare the jump to Rust code.
-+	// Next, relocate the binary.
-+	ADR_REL	x0, __binary_nonzero_start         // The address the binary got loaded to.
-+	ADR_ABS	x1, __binary_nonzero_start         // The address the binary was linked to.
-+	ADR_ABS	x2, __binary_nonzero_end_exclusive
+-       // 処理がここに来たらそれはブートコア。Rustコードにジャンプするための準備をする。
++       // 次に、バイナリを再配置する
++       ADR_REL x0, __binary_nonzero_start         // バイナリのロードアドレス
++       ADR_ABS x1, __binary_nonzero_start         // バイナリのリンクアドレス
++       ADR_ABS x2, __binary_nonzero_end_exclusive
 +
-+1:	ldr	x3, [x0], #8
-+	str	x3, [x1], #8
-+	cmp	x1, x2
-+	b.lo	1b
++1:     ldr     x3, [x0], #8    // x3 <- [x0]; x0+=8
++       str     x3, [x1], #8    // x3 -> [x1]; x1+=8
++       cmp     x1, x2          // x1 - x2
++       b.lo    1b              // goto 1b if x1 < x2
 
- 	// Set the stack pointer.
--	ADR_REL	x0, __boot_core_stack_end_exclusive
-+	ADR_ABS	x0, __boot_core_stack_end_exclusive
- 	mov	sp, x0
+        // スタックポインタを設定する。
+-       ADR_REL x0, __boot_core_stack_end_exclusive     // link.ldで定義 = 0x80000 .textの下に伸びる
++       ADR_ABS x0, __boot_core_stack_end_exclusive
+        mov     sp, x0
 
--	// Jump to Rust code.
--	b	_start_rust
-+	// Jump to the relocated Rust code.
-+	ADR_ABS	x1, _start_rust
-+	br	x1
+-       // Rustコードにジャンプする。
+-       b       _start_rust
++       // 再配置されたRustコードにジャンプする
++       ADR_ABS x1, _start_rust
++       br      x1
 
- 	// Infinitely wait for events (aka "park the core").
--1:	wfe
--	b	1b
-+2:	wfe
-+	b	2b
+        // イベントを無限に待つ（別名 "park the core"）
+-1:     wfe
+-       b       1b
++2:     wfe
++       b       2b
 
- .size	_start, . - _start
- .type	_start, function
+ .size  _start, . - _start
+ .type  _start, function
 
 diff -uNr 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs 06_uart_chainloader/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs
 --- 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs
 +++ 06_uart_chainloader/src/bsp/device_driver/bcm/bcm2xxx_gpio.rs
-@@ -144,7 +144,7 @@
-         // Make an educated guess for a good delay value (Sequence described in the BCM2837
-         // peripherals PDF).
+@@ -143,7 +143,7 @@
+
+         // （BCM2837ペリフェラルのPDFに記載されているシーケンスの）適切な遅延値を
+         // 経験的に推測する。
+-        //   - Wikipediaによると、最速のPi3のクロックは1.4GHz程度
++        //   - Wikipediaによると、最速のRPi4のクロックは1.5GHz程度
+         //   - Linuxの2837 GPIOドライバは、ステップ間で1μs待つ
          //
--        // - According to Wikipedia, the fastest Pi3 clocks around 1.4 GHz.
-+        // - According to Wikipedia, the fastest RPi4 clocks around 1.5 GHz.
-         // - The Linux 2837 GPIO driver waits 1 µs between the steps.
-         //
-         // So lets try to be on the safe side and default to 2000 cycles, which would equal 1 µs
+         // 安全側にふって、デフォルトを2000サイクルとする。CPUのクロックが2GHzの場合、
 
 diff -uNr 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 06_uart_chainloader/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs
 --- 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs
 +++ 06_uart_chainloader/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs
-@@ -279,7 +279,7 @@
+@ -285,8 +285,8 @@
      }
 
-     /// Retrieve a character.
+     /// 1文字受信する
 -    fn read_char_converting(&mut self, blocking_mode: BlockingMode) -> Option<char> {
+-        // RX FIFOがからの場合
 +    fn read_char(&mut self, blocking_mode: BlockingMode) -> Option<char> {
-         // If RX FIFO is empty,
++        // RX FIFOが空の場合
          if self.registers.FR.matches_all(FR::RXFE::SET) {
-             // immediately return in non-blocking mode.
-@@ -294,12 +294,7 @@
+             // ノンブロッキングモードの場合はすぐにリターンする
+             if blocking_mode == BlockingMode::NonBlocking {
+@@ -300,12 +300,7 @@
          }
 
-         // Read one character.
+         // 1文字読み込む
 -        let mut ret = self.registers.DR.get() as u8 as char;
 -
--        // Convert carrige return to newline.
+-        // 復帰を改行に変換する
 -        if ret == '\r' {
 -            ret = '\n'
 -        }
 +        let ret = self.registers.DR.get() as u8 as char;
 
-         // Update statistics.
+         // 統計を更新する
          self.chars_read += 1;
-@@ -379,14 +374,14 @@
+@@ -320,7 +315,7 @@
+ ///
+ /// この関数は `&mut self` を取るので、内部構造体を実装する必要がある
+ ///
+-/// [`src/print.rs`]を参照
++/// See [`src/print.rs`].
+ ///
+ /// [`src/print.rs`]: ../../print/index.html
+ impl fmt::Write for PL011UartInner {
+@@ -385,14 +380,14 @@
  impl console::interface::Read for PL011Uart {
      fn read_char(&self) -> char {
          self.inner
@@ -320,7 +347,7 @@ diff -uNr 05_drivers_gpio_uart/src/bsp/device_driver/bcm/bcm2xxx_pl011_uart.rs 0
      }
 
      fn clear_rx(&self) {
-         // Read from the RX FIFO until it is indicating empty.
+         // 空になるまでRX FIFOを読み込む
          while self
              .inner
 -            .lock(|inner| inner.read_char_converting(BlockingMode::NonBlocking))
@@ -369,7 +396,7 @@ diff -uNr 05_drivers_gpio_uart/src/bsp/raspberrypi/memory.rs 06_uart_chainloader
 --- 05_drivers_gpio_uart/src/bsp/raspberrypi/memory.rs
 +++ 06_uart_chainloader/src/bsp/raspberrypi/memory.rs
 @@ -23,9 +23,10 @@
- /// The board's physical memory map.
+ /// ボードの物理メモリアドレス
  #[rustfmt::skip]
  pub(super) mod map {
 +    pub const BOARD_DEFAULT_LOAD_ADDRESS: usize =        0x8_0000;
@@ -379,22 +406,22 @@ diff -uNr 05_drivers_gpio_uart/src/bsp/raspberrypi/memory.rs 06_uart_chainloader
 +    pub const GPIO_OFFSET:                usize =        0x0020_0000;
 +    pub const UART_OFFSET:                usize =        0x0020_1000;
 
-     /// Physical devices.
+     /// 物理デバイス
      #[cfg(feature = "bsp_rpi3")]
 @@ -52,7 +53,13 @@
- // Public Code
+ // パブリックコード
  //--------------------------------------------------------------------------------------------------
 
--/// Return the inclusive range spanning the .bss section.
-+/// The address on which the Raspberry firmware loads every binary by default.
+-/// .bssセクションに含まれる範囲を返す
++/// Raspberryのファームウェアがデフォルトですべてのバイナリをロードするアドレス
 +#[inline(always)]
 +pub fn board_default_load_addr() -> *const u64 {
 +    map::BOARD_DEFAULT_LOAD_ADDRESS as _
 +}
 +
-+/// Return the inclusive range spanning the relocated .bss section.
++/// 再配置されたbssセクションに含まれる範囲を返す
  ///
- /// # Safety
+ /// # 安全性
  ///
 
 diff -uNr 05_drivers_gpio_uart/src/main.rs 06_uart_chainloader/src/main.rs
@@ -419,7 +446,7 @@ diff -uNr 05_drivers_gpio_uart/src/main.rs 06_uart_chainloader/src/main.rs
 +|_|  |_|_|_||_|_|____\___/\__,_\__,_|
 +"#;
 +
- /// The main function running after the early init.
+ /// 最初の初期化後に実行するメイン関数
  fn kernel_main() -> ! {
      use bsp::console::console;
      use console::interface::All;
@@ -452,31 +479,30 @@ diff -uNr 05_drivers_gpio_uart/src/main.rs 06_uart_chainloader/src/main.rs
 +    println!("[ML] Requesting binary");
 +    console().flush();
 
--    // Discard any spurious received characters before going into echo mode.
-+    // Discard any spurious received characters before starting with the loader protocol.
+     // エコーモードに移行する前に受信したスプリアス文字を破棄する
      console().clear_rx();
 -    loop {
 -        let c = bsp::console::console().read_char();
 -        bsp::console::console().write_char(c);
 +
-+    // Notify `Minipush` to send the binary.
++    // `Minipush`にバイナリを送信するよう通知する
 +    for _ in 0..3 {
 +        console().write_char(3 as char);
      }
 +
-+    // Read the binary's size.
++    // バイナリサイズを読み込む
 +    let mut size: u32 = u32::from(console().read_char() as u8);
 +    size |= u32::from(console().read_char() as u8) << 8;
 +    size |= u32::from(console().read_char() as u8) << 16;
 +    size |= u32::from(console().read_char() as u8) << 24;
 +
-+    // Trust it's not too big.
++    // サイズが巨大でないことを信じる
 +    console().write_char('O');
 +    console().write_char('K');
 +
 +    let kernel_addr: *mut u8 = bsp::memory::board_default_load_addr() as *mut u8;
 +    unsafe {
-+        // Read the kernel byte by byte.
++        // カーネルをバイトごとに読み込む
 +        for i in 0..size {
 +            core::ptr::write_volatile(kernel_addr.offset(i as isize), console().read_char() as u8)
 +        }
@@ -485,10 +511,10 @@ diff -uNr 05_drivers_gpio_uart/src/main.rs 06_uart_chainloader/src/main.rs
 +    println!("[ML] Loaded! Executing the payload now\n");
 +    console().flush();
 +
-+    // Use black magic to create a function pointer.
++    // 関数ポインタを作成するために頃魔術を使用する
 +    let kernel: fn() -> ! = unsafe { core::mem::transmute(kernel_addr) };
 +
-+    // Jump to loaded kernel!
++    // ロードしたカーネルにジャンプする!
 +    kernel()
  }
 

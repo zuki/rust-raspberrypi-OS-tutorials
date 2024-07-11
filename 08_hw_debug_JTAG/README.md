@@ -1,60 +1,57 @@
-# チュートリアル 08 - JTAGを使ったハードウェアデバッグ
+# Tutorial 08 - Hardware Debugging using JTAG
 
 ## tl;dr
 
-下記の通りの順番で実行します。
+In the exact order as listed:
 
-1. `make jtagboot`を実行し、ターミナルを開いておく。
-2. USBシリアルデバイスを接続する。
-3. `JTAG`デバッガUSBデバイスを接続する。
-4. 新しいターミナルで、`make openocd｀を実行し、ターミナルを開いておく。
-5. 新しいターミナルで、`make gdb`または`make gdb-opt0`を実行する。
+1. `make jtagboot` and keep terminal open.
+2. Connect USB serial device.
+3. Connect `JTAG` debugger USB device.
+4. In new terminal, `make openocd` and keep terminal open.
+5. In new terminal, `make gdb` or make `make gdb-opt0`.
 
 ![Demo](../doc/09_demo.gif)
 
-## 目次
+## Table of Contents
 
-- [チュートリアル 08 - JTAGを使ったハードウェアデバッグ](#チュートリアル-08---jtagを使ったハードウェアデバッグ)
-  - [tl;dr](#tldr)
-  - [目次](#目次)
-  - [はじめに](#はじめに)
-  - [概要](#概要)
-  - [ソフトウェアのセットアップ](#ソフトウェアのセットアップ)
-  - [ハードウェアのセットアップ](#ハードウェアのセットアップ)
-    - [配線](#配線)
-  - [接続の準備](#接続の準備)
-  - [OpenOCD](#openocd)
-  - [GDB](#gdb)
-    - [備考](#備考)
-      - [最適化](#最適化)
-      - [GDBの制御](#gdbの制御)
-  - [USB接続の制約に関する注意事項](#usb接続の制約に関する注意事項)
-  - [追加の情報源](#追加の情報源)
-  - [謝辞](#謝辞)
-  - [前回とのDiff](#前回とのdiff)
+- [Introduction](#introduction)
+- [Outline](#outline)
+- [Software Setup](#software-setup)
+- [Hardware Setup](#hardware-setup)
+  * [Wiring](#wiring)
+- [Getting ready to connect](#getting-ready-to-connect)
+- [OpenOCD](#openocd)
+- [GDB](#gdb)
+  * [Remarks](#remarks)
+    + [Optimization](#optimization)
+    + [GDB control](#gdb-control)
+- [Notes on USB connection constraints](#notes-on-usb-connection-constraints)
+- [Additional resources](#additional-resources)
+- [Acknowledgments](#acknowledgments)
+- [Diff to previous](#diff-to-previous)
 
-## はじめに
+## Introduction
 
-今後のチュートリアルでは、デバッグ作業を困難にする可能性のあるRPiのSoCの
-デリケートな部分に触れていきます。たとえば、プロセッサの「権限レベル」の
-変更や「仮想メモリ」の導入などです。
+In the upcoming tutorials, we are going to touch sensitive areas of the RPi's SoC that can make our
+debugging life very hard. For example, changing the processor's `Privilege Level` or introducing
+`Virtual Memory`.
 
-ハードウェアベースのデバッガは、厄介なバグを探す際の最後の手段になることが
-あります。この分野では`QEMU`は助けにならないことがあるからです。なぜなら、
-QEMUはハードウェアの特定の機能を抽象化し、最後の1ビットまでシミュレート
-しないからです。
+A hardware based debugger can sometimes be the last resort when searching for a tricky bug.
+Especially for debugging intricate, architecture-specific HW issues, it will be handy, because in
+this area `QEMU` sometimes can not help, since it abstracts certain features of the HW and doesn't
+simulate down to the very last bit.
 
-そこで、`JTAG`デバッグを導入します。一度セットアップすれば、実際のハードウェア
-上でカーネルをシングルステップ実行することができます。すごいでしょう?!
+So lets introduce `JTAG` debugging. Once set up, it will allow us to single-step through our kernel
+on the real HW. How cool is that?!
 
-## 概要
+## Outline
 
-カーネルの観点から見ると、このチュートリアルは前回のものと同じです。単に
-JTAGデバッグのためのインフラストラクチャでラップしているだけです。
+From kernel perspective, this tutorial is the same as the previous one. We are just wrapping
+infrastructure for JTAG debugging around it.
 
-## ソフトウェアのセットアップ
+## Software Setup
 
-SDカードの`config.txt`ファイルに1行追加する必要があります。
+We need to add another line to the `config.txt` file from the SD Card:
 
 ```toml
 arm_64bit=1
@@ -62,31 +59,28 @@ init_uart_clock=48000000
 enable_jtag_gpio=1
 ```
 
-## ハードウェアのセットアップ
+## Hardware Setup
 
-Raspberry Piは、我々のWGが作成している[Embedded Rust Book]（[日本語訳]）で使用している
-`STM32F3DISCOVERY`のようなマイコンボードとは異なり、ボード上に組込み
-デバッガを搭載していません。そのため、デバッガを購入する必要があります。
+Unlike microcontroller boards like the `STM32F3DISCOVERY`, which is used in our WG's [Embedded Rust
+Book], the Raspberry Pi does not have an embedded debugger on its board. Hence, you need to buy one.
 
-このチュートリアルでは、OLIMEX社の[ARM-USB-TINY-H]を使用します。これは
-標準的な[ARM JTAG 20コネクタ]を備えています。残念ながら、RPiにはこの
-コネクタはありませんので、ジャンパ線で接続する必要があります。
+For this tutorial, we will use the [ARM-USB-TINY-H] from OLIMEX. It has a standard [ARM JTAG 20
+connector]. Unfortunately, the RPi does not, so we have to connect it via jumper wires.
 
 [Embedded Rust Book]: https://rust-embedded.github.io/book/start/hardware.html
-[日本語訳]: https://tomoyuki-nakabayashi.github.io/book/
 [ARM-USB-TINY-H]: https://www.olimex.com/Products/ARM/JTAG/ARM-USB-TINY-H
-[ARM JTAG 20コネクタ]: http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0499dj/BEHEIHCE.html
+[ARM JTAG 20 connector]: http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0499dj/BEHEIHCE.html
 
-### 配線
+### Wiring
 
 <table>
     <thead>
         <tr>
             <th>GPIO #</th>
-			<th>名前</th>
+			<th>Name</th>
 			<th>JTAG #</th>
-			<th>注記</th>
-			<th width="60%">配線図</th>
+			<th>Note</th>
+			<th width="60%">Diagram</th>
         </tr>
     </thead>
     <tbody>
@@ -94,14 +88,14 @@ Raspberry Piは、我々のWGが作成している[Embedded Rust Book]（[日本
             <td></td>
             <td>VTREF</td>
             <td>1</td>
-            <td>3.3Vへ</td>
+            <td>to 3.3V</td>
             <td rowspan="8"><img src="../doc/09_wiring_jtag.png"></td>
         </tr>
         <tr>
             <td></td>
             <td>GND</td>
             <td>4</td>
-            <td>GNDへ</td>
+            <td>to GND</td>
         </tr>
         <tr>
             <td>22</td>
@@ -144,18 +138,18 @@ Raspberry Piは、我々のWGが作成している[Embedded Rust Book]（[日本
 
 <p align="center"><img src="../doc/09_image_jtag_connected.jpg" width="50%"></p>
 
-## 接続の準備
+## Getting ready to connect
 
-起動すると、`config.txt`を変更したおかげで、RPiのファームウェアがそれぞれの
-GPIOピンを`JTAG`用に設定します。
+Upon booting, thanks to the changes we made to `config.txt`, the RPi's firmware will configure the
+respective GPIO pins for `JTAG` functionality.
 
-あとは、RPiの実行を一時停止して、`JTAG`経由で接続するだけです。そこで
-`Makefile`に新規ターゲット`make jtagboot`を追加します。これは、`chainboot`
-アプローチを使用して、実行中のコアを待機状態にするだけの小さなヘルパー
-バイナリをRPiにロードします。
+What is left to do now is to pause the execution of the RPi and then connect
+over `JTAG`. Therefore, we add a new `Makefile` target, `make jtagboot`, which
+uses the `chainboot` approach to load a tiny helper binary onto the RPi that
+just parks the executing core into a waiting state.
 
-このヘルパーバイナリは、このリポジトリの`X1_JTAG_boot`フォルダで別に管理
-されており、これまでのチュートリアルで使用したカーネルを修正したものです。
+The helper binary is maintained separately in this repository's [X1_JTAG_boot] folder, and is a
+modified version of the kernel we used in our tutorials so far.
 
 [X1_JTAG_boot]: ../X1_JTAG_boot
 
@@ -180,25 +174,23 @@ Minipush 1.0
 [    0.394532] Parking CPU core. Please connect over JTAG now.
 ```
 
-USBシリアルを接続したまま、`jtagboot`を実行したターミナルをそのままに
-しておくことが重要です。後で実際のカーネルをロードした時に、`UART`の出力が
-ここに表示されます。
+It is important to keep the USB serial connected and the terminal with the `jtagboot` open and
+running. When we load the actual kernel later, `UART` output will appear here.
 
 ## OpenOCD
 
-次に、`JTAG`を実際に接続するために[Open On-Chip Debugger]、通称`OpenOCD`を
-起動する必要があります。
+Next, we need to launch the [Open On-Chip Debugger], aka `OpenOCD` to actually connect the `JTAG`.
 
 [Open On-Chip Debugger]: http://openocd.org
 
-いつものように、私たちのチュートリアルでは開発ツールに関してできる限り手間を
-かけないようにしています。そのため、Chainbootingや`QEMU`ですでに使用している
-[専用のDockerコンテナ]にすべてをパッケージ化しています。
+As always, our tutorials try to be as painless as possible regarding dev-tools, which is why we have
+packaged everything into the [dedicated Docker container] that is already used for chainbooting and
+`QEMU`.
 
-[専用のDockerコンテナ]: ../docker/rustembedded-osdev-utils
+[dedicated Docker container]: ../docker/rustembedded-osdev-utils
 
-OlimexのUSB JTAGデバッガを接続し、新しいターミナルを開いて、同じフォルダで
-`make openocd`と入力します（この順番で！）。次のような初期出力が表示されます。
+Connect the Olimex USB JTAG debugger, open a new terminal and in the same folder, type `make
+openocd` (in that order!). You will see some initial output:
 
 ```console
 $ make openocd
@@ -219,27 +211,24 @@ Info : Listening on port 3335 for gdb connections
 Info : Listening on port 3336 for gdb connections
 ```
 
-`OpenOCD`はRPiの4つのコアを検出し、`gdb`がそれぞれのコアをデバッグできるように
-4つのネットワークポートを開いています。
+`OpenOCD` has detected the four cores of the RPi, and opened four network ports to which `gdb` can
+now connect to debug the respective core.
 
 ## GDB
 
-最後に、`AArch64`に対応したバージョンの`gdb`が必要です。推測通り、それは
-すでにosdevコンテナにパッケージされています。これは`make gdb`で起動できます。
+Finally, we need an `AArch64`-capable version of `gdb`. You guessed right, it's already packaged in
+the osdev container. It can be launched via `make gdb`.
 
-このMakefileのターゲットは実際にはもう少し多くのことを行います。デバッグ情報を
-含む特別バージョンのカーネルをビルドします。これにより`gdb`は現在デバッグして
-いる`Rust`のソースコードを表示することができます。また、このデバッグビルド
-(`kernel_for_jtag`)をロードするように`gdb`を起動します。
+This Makefile target actually does a little more. It builds a special version of our kernel with
+debug information included. This enables `gdb` to show the `Rust` source code line we are currently
+debugging. It also launches `gdb` such that it already loads this debug build (`kernel_for_jtag`).
 
-これで`gdb`のコマンドラインを使って以下のことができます。
-
-  1. カーネルにブレークポイントを設定する。
-  2. JTAG経由でカーネルをメモリにロードする（現在、RPiは最小限のJTAGブート
-     バイナリを実行していることを忘れないでください）。
-  3. RPiのプログラムカウンタを操作して、カーネルのエントリポイントから実行を
-     開始する。
-  4. シングルステップで実行する。
+We can now use the `gdb` commandline to
+  1. Set breakpoints in our kernel
+  2. Load the kernel via JTAG into memory (remember that currently, the RPi is still executing the
+     minimal JTAG boot binary).
+  3. Manipulate the program counter of the RPi to start execution at our kernel's entry point.
+  4. Single-step through its execution.
 
 ```console
 $ make gdb
@@ -262,65 +251,58 @@ Breakpoint 1 at 0x8025c: file src/main.rs, line 158.
 >>> ...
 ```
 
-### 備考
+### Remarks
 
-#### 最適化
+#### Optimization
 
-OSのバイナリをデバッグする際には、ステップ実行できるRustのソースコードの粒度と
-生成されるバイナリの最適化レベルの間でトレードオフを行う必要があります。`make`
-と`make gdb`ターゲットは、最適化レベル 3 (`-opt-level=3`) の`--release`
-バイナリを生成します。しかし、この場合、コンパイラは非常に積極的にインライン
-化を行い、可能な限りリードとライトを一体化します。その結果、ソースコード
-ファイルの希望の行に正確にブレークポイントを設定できるとは限りません。
+When debugging an OS binary, you have to make a trade-off between the granularity at which you can
+step through your Rust source-code and the optimization level of the generated binary. The `make`
+and `make gdb` targets produce a `--release` binary, which includes an optimization level of three
+(`-opt-level=3`). However, in this case, the compiler will inline very aggressively and pack
+together reads and writes where possible. As a result, it will not always be possible to hit
+breakpoints exactly where you want to regarding the line of source code file.
 
-このため、Makefileには`-opt-level=0`を使用する`make gdb-opt0`ターゲットも
-用意されており、より詳細なデバッグが可能になります。ただし、HWを密接に扱う
-コードをデバッグする際には、揮発性レジスタへの読み書きを潰すようなコンパイラの
-最適化が実行時に大きな違いを生じさせることを覚えておいてください。参考までに、
-上のデモGIFは`gdb-opt0`で記録されています。
+For this reason, the Makefile also provides the `make gdb-opt0` target, which uses `-opt-level=0`.
+Hence, it will allow you to have finer debugging granularity. However, please keep in mind that when
+debugging code that closely deals with HW, a compiler optimization that squashes reads or writes to
+volatile registers can make all the difference in execution. FYI, the demo gif above has been
+recorded with `gdb-opt0`.
 
-#### GDBの制御
+#### GDB control
 
-ある時点で、遅延ループやシリアルからのユーザ入力を待つコードに到達する場合が
-あります。この場合、シングルステップが実行できなくなったり、機能しなくなったり
-する可能性があります。このような場合は、これらの領域の先に別のブレークポイントを
-設定し、`cont`コマンドを使用してこのブレークポイントまで飛ぶことで、この問題を
-克服することができます。
+At some point, you may reach delay loops or code that waits on user input from the serial. Here,
+single stepping might not be feasible or work anymore. You can jump over these roadblocks by setting
+other breakpoints beyond these areas, and reach them using the `cont` command.
 
-`gdb`で`ctrl+c`を押すと、ブレークポイントを設定せずに実行を続けた場合、RPiの
-実行が再び停止します。
+Pressing `ctrl+c` in `gdb` will stop execution of the RPi again in case you continued it without
+further breakpoints.
 
-## USB接続の制約に関する注意事項
+## Notes on USB connection constraints
 
-このチュートリアルに最初から最後まで従っていれば、USB接続に関してはすべて
-問題ないはずです。
+If you followed the tutorial from top to bottom, everything should be fine regarding USB
+connections.
 
-しかし、現在のMakefileは、接続されるUSBデバイスの名前について暗黙の前提を
-置いていることに注意してください。つまり、`/dev/ttyUSB0`が`UART`デバイスで
-あることを想定しています。
+Still, please note that in its current form, our `Makefile` makes implicit assumptions about the
+naming of the connected USB devices. It expects `/dev/ttyUSB0` to be the `UART` device.
 
-したがって、あなたのボックスにデバイスを接続する際には、以下の順序を確認して
-ください。
+Hence, please ensure the following order of connecting the devices to your box:
+  1. Connect the USB serial.
+  2. Afterwards, the Olimex debugger.
 
-  1. USBシリアルを接続する。
-  2. その後、Olimexデバッガを接続する。
+This way, the host OS enumerates the devices accordingly. This has to be done only once. It is fine
+to disconnect and connect the serial multiple times, e.g. for kicking off different `make jtagboot`
+runs, while keeping the debugger connected.
 
-これによりホストOSはデバイスを正しく列挙します。この作業が必要なのは一度だけ
-です。たとえば、デバッガを接続したまま、もう一度、`make jtagboot`を起動
-するために、シリアルを何度も切断したり接続したりしても構いません。
-
-## 追加の情報源
+## Additional resources
 
 - https://metebalci.com/blog/bare-metal-raspberry-pi-3b-jtag
 - https://www.suse.com/c/debugging-raspberry-pi-3-with-jtag
 
-## 謝辞
+## Acknowledgments
 
-このチュートリアルの土台を作ってくれた[@naotaco](https://github.com/naotaco)に
-感謝します。
+Thanks to [@naotaco](https://github.com/naotaco) for laying the groundwork for this tutorial.
 
-## 前回とのDiff
-
+## Diff to previous
 ```diff
 
 diff -uNr 07_timestamps/Cargo.toml 08_hw_debug_JTAG/Cargo.toml
