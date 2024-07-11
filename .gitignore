@@ -5,5 +5,7 @@
 node_modules
 .vendor
 
+.DS_Store
+
 Gemfile.lock
 package-lock.json
